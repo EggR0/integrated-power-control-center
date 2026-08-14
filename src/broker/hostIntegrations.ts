@@ -103,15 +103,30 @@ function isClaudeInstalled(): boolean {
 
 function inspectChatGpt(): HostIntegrationStatus {
   const config = readHostIntegrationConfig();
-  const endpoint = (process.env.INTEGRATED_POWER_CHATGPT_MCP_URL || config.chatgptMcpUrl)?.trim();
-  const validRemote = Boolean(endpoint && /^https:\/\//i.test(endpoint));
+  const explicitEndpoint = (process.env.INTEGRATED_POWER_CHATGPT_MCP_URL || config.chatgptMcpUrl)?.trim();
   const installed = isChatGptInstalled();
+
+  let localMcpConfigured = false;
+  let detectedEndpoint = explicitEndpoint;
+  try {
+    const configPath = path.join(os.homedir(), ".codex", "config.toml");
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, "utf8");
+      if (/\[mcp_servers\.(?:integrated-power|"integrated-power")\]/i.test(content) || /37241\/mcp/i.test(content)) {
+        localMcpConfigured = true;
+        const urlMatch = content.match(/url\s*=\s*["']([^"']+)["']/);
+        if (urlMatch && urlMatch[1]) detectedEndpoint = urlMatch[1];
+      }
+    }
+  } catch { /* best effort */ }
+
+  const isConfigured = Boolean(localMcpConfigured || (explicitEndpoint && /^https?:\/\//i.test(explicitEndpoint)));
 
   let stateKind: AgentStateKind = "not_installed";
   let stateLabel = "설치X";
   let reason: string | undefined = "ChatGPT 데스크톱 앱이 설치되어 있지 않습니다.";
 
-  if (validRemote) {
+  if (isConfigured) {
     stateKind = "available";
     stateLabel = "사용가능";
     reason = undefined;
@@ -124,12 +139,12 @@ function inspectChatGpt(): HostIntegrationStatus {
   return {
     provider: "openai.chatgpt.app",
     label: "ChatGPT desktop/web MCP app",
-    available: validRemote,
+    available: isConfigured,
     stateKind,
     stateLabel,
     mode: "gui",
     capabilities: ["leader", "remote-mcp", "streaming"],
-    endpoint: validRemote ? endpoint : undefined,
+    endpoint: detectedEndpoint || (isConfigured ? "http://127.0.0.1:37241/mcp" : undefined),
     reason,
     setup: "ChatGPT 맞춤형 MCP에 'http://127.0.0.1:37241/mcp'를 등록하여 로컬 브로커와 연동합니다.",
   };

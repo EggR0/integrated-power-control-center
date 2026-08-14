@@ -193,6 +193,47 @@ export class JsonRpcStdioClient {
 }
 
 async function findCodexCandidates(): Promise<string[]> {
+  const explicit = process.env.INTEGRATED_POWER_CODEX_EXE?.trim();
+  if (explicit) return [explicit];
+  const candidates: string[] = [];
+
+  if (process.platform === "win32") {
+    const homedir = os.homedir();
+    const local = process.env.LOCALAPPDATA || path.join(homedir, "AppData", "Local");
+    // 1. Check CODEX_CLI_PATH in ~/.codex/config.toml
+    const configTomlPath = path.join(homedir, ".codex", "config.toml");
+    if (fs.existsSync(configTomlPath)) {
+      try {
+        const tomlContent = fs.readFileSync(configTomlPath, "utf8");
+        const match = tomlContent.match(/CODEX_CLI_PATH\s*=\s*['"]([^'"]+)['"]/);
+        if (match && match[1] && fs.existsSync(match[1])) {
+          candidates.push(match[1]);
+        }
+      } catch { /* best effort */ }
+    }
+    // 2. Check AppData/Local/OpenAI/Codex/bin/**/codex.exe
+    const codexBinRoot = path.join(local, "OpenAI", "Codex", "bin");
+    if (fs.existsSync(codexBinRoot)) {
+      try {
+        const subdirs = fs.readdirSync(codexBinRoot);
+        for (const sub of subdirs) {
+          const exe = path.join(codexBinRoot, sub, "codex.exe");
+          if (fs.existsSync(exe)) candidates.push(exe);
+        }
+      } catch { /* best effort */ }
+    }
+    // 3. Check ProgramFiles / Local Programs
+    const directCandidates = [
+      path.join(local, "Programs", "Codex", "codex.exe"),
+      path.join(local, "Programs", "ChatGPT", "resources", "codex.exe"),
+      path.join(homedir, ".codex", ".sandbox-bin", "codex.exe"),
+    ];
+    for (const direct of directCandidates) {
+      if (fs.existsSync(direct)) candidates.push(direct);
+    }
+  }
+
+  // 4. PATH lookup
   const names = process.platform === "win32" ? ["codex.cmd", "codex.exe", "codex"] : ["codex"];
   const { execFile } = await import("child_process");
   const { promisify } = await import("util");
@@ -201,10 +242,10 @@ async function findCodexCandidates(): Promise<string[]> {
     try {
       const result = await execFileAsync(process.platform === "win32" ? "where.exe" : "which", [name], { windowsHide: true, timeout: 3000 });
       const found = String(result.stdout).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-      if (found.length) return found;
+      candidates.push(...found);
     } catch { /* try next candidate */ }
   }
-  return [];
+  return [...new Set(candidates)];
 }
 
 async function firstCallable(candidates: string[]): Promise<string | undefined> {
