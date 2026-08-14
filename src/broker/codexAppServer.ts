@@ -1,6 +1,9 @@
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import * as readline from "readline";
-import { AgentCapability, AgentAdapter, ProviderId, TaskEnvelope } from "./protocol";
+import { AgentCapability, AgentAdapter, AgentStateKind, ProviderId, TaskEnvelope } from "./protocol";
 
 type JsonRpcMessage = {
   id?: number;
@@ -24,8 +27,14 @@ export class CodexAppServerAdapter implements AgentAdapter {
     const candidates = this.executable ? [this.executable] : process.env.INTEGRATED_POWER_CODEX_EXE ? [process.env.INTEGRATED_POWER_CODEX_EXE] : await findCodexCandidates();
     const executable = await firstCallable(candidates) ?? candidates[0];
     const callable = Boolean(executable && await canExecute(executable));
-    const stateKind = callable ? "available" : executable ? "waiting" : "not_installed";
-    const stateLabel = callable ? "사용가능" : executable ? "대기" : "설치X";
+    const installed = isCodexInstalled();
+    const stateKind: AgentStateKind = callable ? "available" : installed ? "waiting" : "not_installed";
+    const stateLabel = callable ? "사용가능" : installed ? "대기" : "설치X";
+    const reason = callable
+      ? undefined
+      : installed
+        ? "Codex 환경이 설치되어 있습니다 (~/.codex). Codex App Server 및 세션 대기 중입니다."
+        : "Codex CLI가 설치되어 있지 않거나 PATH에 없습니다.";
     return {
       provider: this.provider,
       label: "Codex App Server",
@@ -35,7 +44,7 @@ export class CodexAppServerAdapter implements AgentAdapter {
       mode: "app-server",
       capabilities: ["leader", "executor", "local-mcp", "code-write", "streaming", "cancel"],
       endpoint: executable,
-      reason: callable ? undefined : executable ? "Codex executable was found but could not be launched by this process; app-server remains disabled." : "Codex CLI was not callable on PATH; app-server remains disabled.",
+      reason,
     };
   }
 
@@ -217,3 +226,29 @@ async function canExecute(executable: string): Promise<boolean> {
     return false;
   }
 }
+
+export function isCodexInstalled(): boolean {
+  if (process.platform === "win32") {
+    const homedir = os.homedir();
+    const local = process.env.LOCALAPPDATA || path.join(homedir, "AppData", "Local");
+    const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+    const candidates = [
+      path.join(homedir, ".codex"),
+      path.join(local, "OpenAI", "Codex"),
+      path.join(local, "Programs", "Codex"),
+      path.join(local, "Programs", "ChatGPT"),
+      path.join(programFiles, "ChatGPT"),
+      path.join(programFiles, "Codex"),
+    ];
+    if (candidates.some((c) => fs.existsSync(c))) return true;
+    const packagesDir = path.join(local, "Packages");
+    try {
+      if (fs.existsSync(packagesDir)) {
+        const entries = fs.readdirSync(packagesDir);
+        if (entries.some((e) => e.startsWith("OpenAI.Codex") || e.startsWith("OpenAI.ChatGPT"))) return true;
+      }
+    } catch { /* best effort */ }
+  }
+  return fs.existsSync(path.join(os.homedir(), ".codex"));
+}
+

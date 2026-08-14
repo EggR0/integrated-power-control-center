@@ -62,11 +62,14 @@ export function listHostIntegrations(): HostIntegrationStatus[] {
 
 function isChatGptInstalled(): boolean {
   if (process.platform === "win32") {
-    const local = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    const homedir = os.homedir();
+    const local = process.env.LOCALAPPDATA || path.join(homedir, "AppData", "Local");
     const programFiles = process.env.ProgramFiles || "C:\\Program Files";
     const candidates = [
       path.join(local, "Programs", "ChatGPT", "ChatGPT.exe"),
       path.join(programFiles, "ChatGPT", "ChatGPT.exe"),
+      path.join(local, "OpenAI", "Codex"),
+      path.join(homedir, ".codex"),
     ];
     if (candidates.some((c) => fs.existsSync(c))) return true;
     const packagesDir = path.join(local, "Packages");
@@ -90,6 +93,7 @@ function isClaudeInstalled(): boolean {
       path.join(local, "Programs", "Claude", "Claude.exe"),
       path.join(programFiles, "Claude", "Claude.exe"),
       path.join(appData, "Claude"),
+      path.join(appData, "Claude", "claude_desktop_config.json"),
     ];
     return candidates.some((c) => fs.existsSync(c));
   }
