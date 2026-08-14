@@ -40,7 +40,7 @@
     "mcp": "node ./mcp-server.js",
     "tauri:dev": "tauri dev",
     "tauri:build": "npm run build && npm run prepare:broker && tauri build",
-    "test": "npm run compile:broker && node ./scripts/smoke-broker.js"
+    "test": "npm run compile:broker && node ./scripts/smoke-broker.js && node ./scripts/verify-live-e2e.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.5.0",

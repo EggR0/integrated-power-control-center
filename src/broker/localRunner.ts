@@ -74,7 +74,7 @@ export async function runLegacyLocalLlm(task: TaskEnvelope, prompt: string, requ
   return { text, model, selection, outputFile };
 }
 
-function resolveScriptsRoot(): string {
+export function resolveScriptsRoot(): string {
   const candidates: string[] = [];
   const configured = process.env.INTEGRATED_POWER_LOCAL_SCRIPTS?.trim();
   if (configured) candidates.push(path.resolve(configured));
