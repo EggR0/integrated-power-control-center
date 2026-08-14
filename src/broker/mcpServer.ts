@@ -105,6 +105,10 @@ async function callTool(broker: IntegratedPowerBroker, name: string, args: Recor
       return { event: await broker.recordEvaluation({ taskId: String(args.taskId), proposalId: String(args.proposalId), evaluator: args.evaluator, score: Number(args.score), rationale: String(args.rationale ?? ""), expectedRevision: Number(args.expectedRevision), idempotencyKey: args.idempotencyKey }) };
     case "integrated_power_record_evidence":
       return { event: await broker.recordEvidence({ taskId: String(args.taskId), kind: args.kind, label: String(args.label ?? ""), passed: Boolean(args.passed), details: String(args.details ?? ""), expectedRevision: Number(args.expectedRevision), idempotencyKey: args.idempotencyKey }) };
+    case "integrated_power_quick_delegate":
+      return await broker.quickDelegate(args as any);
+    case "integrated_power_get_token_status":
+      return await broker.getTokenStatus();
     case "integrated_power_synthesize":
       return { event: await broker.synthesize({ taskId: String(args.taskId), provider: args.provider, content: String(args.content ?? ""), dissent: Array.isArray(args.dissent) ? args.dissent.map(String) : [], confidence: Number(args.confidence), evidenceIds: Array.isArray(args.evidenceIds) ? args.evidenceIds.map(String) : [], expectedRevision: Number(args.expectedRevision), idempotencyKey: args.idempotencyKey }) };
     default:

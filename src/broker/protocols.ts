@@ -95,6 +95,32 @@ export const integratedPowerProtocolBoundary: IntegratedPowerProtocolBoundary = 
         inputSchema: { type: "object", properties: { taskId: { type: "string" }, kind: { type: "string", enum: ["test", "diff", "source", "manual", "runtime"] }, label: { type: "string" }, passed: { type: "boolean" }, details: { type: "string" }, expectedRevision: { type: "integer" }, idempotencyKey: { type: "string" } }, required: ["taskId", "kind", "label", "passed", "details", "expectedRevision"] },
       },
       {
+        name: "integrated_power_quick_delegate",
+        description: "One-click auto-delegation from ChatGPT/Claude to local Antigravity (agy), Codex, or Local LLM. Automatically creates a task, selects optimal execution route, runs the task locally, records token usage, and returns the result in one step.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            title: { type: "string", description: "Short title or summary of the task" },
+            prompt: { type: "string", description: "Detailed task instructions or code to execute" },
+            workspacePath: { type: "string", description: "Optional target directory (defaults to current project)" },
+            targetProvider: {
+              type: "string",
+              enum: ["auto", "google.antigravity.ide", "openai.codex.app", "local.openai-compatible"],
+              description: "Target provider ('auto' automatically chooses between Antigravity, Codex, or Local LLM based on token efficiency)",
+            },
+          },
+          required: ["prompt"],
+        },
+      },
+      {
+        name: "integrated_power_get_token_status",
+        description: "Get real-time token quota, remaining percentages, and routing advice across Antigravity IDE, OpenAI Codex, and Local LLM (matching Antigravity extension dashboard).",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      {
         name: "integrated_power_synthesize",
         description: "Persist a synthesis with dissent, confidence, and evidence references.",
         inputSchema: { type: "object", properties: { taskId: { type: "string" }, provider: { type: "string" }, content: { type: "string" }, dissent: { type: "array", items: { type: "string" } }, confidence: { type: "number" }, evidenceIds: { type: "array", items: { type: "string" } }, expectedRevision: { type: "integer" }, idempotencyKey: { type: "string" } }, required: ["taskId", "provider", "content", "confidence", "expectedRevision"] },

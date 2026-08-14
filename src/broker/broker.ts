@@ -536,6 +536,84 @@ export class IntegratedPowerBroker {
     if (!task) throw new Error(`Task not found: ${taskId}`);
     return task;
   }
+
+  public async getTokenStatus(): Promise<Record<string, unknown>> {
+    const capabilities = await this.discover();
+    const agyCap = capabilities.find((c) => c.provider === "google.antigravity.ide");
+    const codexCap = capabilities.find((c) => c.provider === "openai.codex.app");
+    const localCap = capabilities.find((c) => c.provider === "local.openai-compatible");
+
+    return {
+      antigravity: {
+        provider: "google.antigravity.ide",
+        label: "Antigravity IDE / Agy",
+        status: agyCap?.available ? "사용가능 (Available)" : "미설치 (Not Installed)",
+        role: "대규모 컨텍스트 기반 저장소 분석, 작업 기획, 오케스트레이션, Heavy Lifting",
+      },
+      codex: {
+        provider: "openai.codex.app",
+        label: "OpenAI Codex App Server",
+        status: codexCap?.available ? "사용가능 (Available)" : "미설치 (Not Installed)",
+        role: "정밀 로직 작성, 아키텍처 토론, 치명적인 버그 해결 및 Writer-Critic 검증",
+      },
+      localLlm: {
+        provider: "local.openai-compatible",
+        label: "Local LLM (Qwen 3.6 27B / Ollama)",
+        status: localCap?.available ? "사용가능 (Zero Token Cost)" : "미설치",
+        model: localCap?.model || "qwen3.6:27b",
+        role: "VRAM 기반 포맷팅, 자동완성, 민감 데이터 처리, 단순 반복 작업 (비용 0)",
+      },
+      routingPolicy: "1. Heavy 코드 생성/분석 -> Antigravity\n2. 정밀 로직/아키텍처 검증 -> Codex\n3. 단순 반복/오프라인 작업 -> Local LLM (토큰 소모 없음)",
+      totalTasksLogged: this.tasks.size,
+    };
+  }
+
+  public async quickDelegate(input: {
+    title?: string;
+    prompt: string;
+    workspacePath?: string;
+    targetProvider?: string;
+    originProvider?: string;
+  }): Promise<Record<string, unknown>> {
+    const title = input.title?.trim() || input.prompt.slice(0, 50).replace(/[\r\n]+/g, " ");
+    const originProvider = input.originProvider || "openai.chatgpt.app";
+    const workspacePath = input.workspacePath?.trim() || process.env.INTEGRATED_POWER_DEFAULT_WORKSPACE || process.cwd();
+
+    const task = await this.createTask({
+      title,
+      goal: input.prompt,
+      originProvider: originProvider as any,
+      workspacePath,
+      privacy: "local",
+      budget: { maxParticipants: 4, allowApiSpend: false },
+    });
+
+    let target = (input.targetProvider || "auto").trim();
+    if (target === "auto" || !target) {
+      const decision = this.chooseRoute(task.id);
+      target = decision?.provider || "google.antigravity.ide";
+    }
+
+    const event = await this.delegate({
+      taskId: task.id,
+      provider: target as any,
+      prompt: input.prompt,
+      expectedRevision: task.revision,
+    });
+
+    const updatedTask = this.getTask(task.id);
+    const tokenStatus = await this.getTokenStatus();
+
+    return {
+      success: updatedTask?.status === "completed",
+      taskId: task.id,
+      title: task.title,
+      delegatedTo: target,
+      status: updatedTask?.status,
+      result: (event.payload as any)?.text || (event.payload as any)?.prompt || "Delegation processed.",
+      tokenStatus,
+    };
+  }
 }
 
 function redactPrompt(value: string): string {
