@@ -4,8 +4,8 @@
   "version": "0.8.0",
   "identifier": "com.eggr.integrated-power.control-center",
   "build": {
-    "beforeDevCommand": "pnpm --dir ../vscode-extension compile && npm run prepare:broker && npm run dev",
-    "beforeBuildCommand": "pnpm --dir ../vscode-extension compile && npm run prepare:broker && npm run build",
+    "beforeDevCommand": "npm run compile:broker && npm run prepare:broker && npm run dev",
+    "beforeBuildCommand": "npm run compile:broker && npm run prepare:broker && npm run build",
     "devUrl": "http://127.0.0.1:5173",
     "frontendDist": "../dist"
   },
