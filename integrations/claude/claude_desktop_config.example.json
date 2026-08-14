@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "integrated-power": {
+      "command": "node",
+      "args": ["C:/Path/To/Integrated POWER/control-center/mcp-server.js"],
+      "env": {
+        "INTEGRATED_POWER_STATE_ROOT": "C:/Users/YourName/AppData/Local/IntegratedPower/state"
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "ip-orchestrator-plugin",
+  "version": "3.3.0",
+  "description": "Integrated Power broker bridge for Agy and local LLM delegation with encrypted task events, routing, and approval boundaries.",
+  "author": {
+    "name": "Integrated Power"
+  },
+  "integratedPower": {
+    "productId": "ip-orchestrator",
+    "managed": true,
+    "schemaVersion": 1
+  },
+  "license": "PolyForm-Strict-1.0.0",
+  "keywords": [
+    "eggr",
+    "integrated-power",
+    "codex",
+    "orchestration",
+    "delegation",
+    "architecture",
+    "automation"
+  ]
+}

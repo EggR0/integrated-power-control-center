@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build & Bundling output
+dist/
+broker-out/
+src-tauri/target/
+src-tauri/resources/node_modules/
+src-tauri/resources/broker-out/
+src-tauri/resources/node-runtime.exe
+src-tauri/resources/node-runtime
+
+# Local State and Secrets
+.env
+.env.*
+*.env
+*.key
+*.pem
+*.log
+.system_generated/
+.aider*
+.DS_Store
+Thumbs.db

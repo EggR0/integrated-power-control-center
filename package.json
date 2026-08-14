@@ -1,0 +1,58 @@
+{
+  "name": "integrated-power-control-center",
+  "displayName": "Integrated Power Control Center & Multi-AI Broker",
+  "version": "0.8.0",
+  "description": "Universal Standalone Multi-AI Loopback Broker and Desktop Control Center for ChatGPT, Claude, Antigravity, Local LLMs (Ollama/Qwen), and Codex.",
+  "author": "EggR",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EggR0/integrated-power-control-center.git"
+  },
+  "homepage": "https://github.com/EggR0/integrated-power-control-center#readme",
+  "bugs": {
+    "url": "https://github.com/EggR0/integrated-power-control-center/issues"
+  },
+  "keywords": [
+    "integrated-power",
+    "multi-ai",
+    "mcp",
+    "model-context-protocol",
+    "chatgpt",
+    "claude",
+    "antigravity",
+    "local-llm",
+    "ollama",
+    "vllm",
+    "qwen",
+    "codex",
+    "a2a",
+    "ag-ui",
+    "windows-11"
+  ],
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "npm run compile:broker && vite build",
+    "compile:broker": "tsc -p ./tsconfig.broker.json",
+    "prepare:broker": "node ./scripts/copy-broker.js",
+    "verify:package": "node ./scripts/verify-package.js",
+    "broker": "node ./broker-server.js",
+    "mcp": "node ./mcp-server.js",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "npm run build && npm run prepare:broker && tauri build",
+    "test": "npm run compile:broker && node ./scripts/smoke-broker.js"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.0",
+    "@types/node": "18.x",
+    "typescript": "^5.1.3",
+    "vite": "^6.1.0"
+  },
+  "dependencies": {
+    "@a2a-js/sdk": "^1.0.1",
+    "@ag-ui/core": "^0.0.57",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "gray-matter": "^4.0.3",
+    "zod": "^4.4.3"
+  }
+}

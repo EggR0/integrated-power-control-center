@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "defaultMode": "local_first",
+  "intent": "Prefer local LLM execution for most delegatable preprocessing and low-risk reasoning while reserving Antigravity and Codex for high-value judgment, implementation, and verification.",
+  "localFirst": {
+    "enabled": true,
+    "requireHealthyComputer": true,
+    "preferForTaskTypes": [
+      "summarization",
+      "extraction",
+      "korean",
+      "long_context",
+      "routing_review",
+      "general"
+    ],
+    "allowCodingWhen": "read-only review, patch planning, test idea generation, or small low-risk draft work",
+    "avoidWhen": [
+      "direct edits have high correctness risk",
+      "local endpoint is offline",
+      "GPU/VRAM pressure would disrupt the user's machine",
+      "task needs repository-wide precise implementation"
+    ]
+  },
+  "cloudEscalation": {
+    "codexUse": "bounded implementation, difficult debugging, tests, refactors, and code review requiring strong coding judgment",
+    "antigravityUse": "interactive IDE judgment, user-visible diff review, final acceptance, and cross-agent routing decisions",
+    "weeklyResetBoost": {
+      "enabled": true,
+      "nearResetHours": 18,
+      "effect": "Lower the threshold for Codex/Antigravity on useful high-quality work when weekly quota would otherwise expire unused."
+    }
+  },
+  "complexityGuardrails": {
+    "maxDecisionLayers": 2,
+    "decisionLayers": [
+      "Can local LLM do this reliably enough?",
+      "If not, is cloud quota worth spending now given reset timing and task risk?"
+    ],
+    "requireArtifact": true
+  }
+}

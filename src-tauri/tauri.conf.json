@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Integrated Power Control Center",
+  "version": "0.8.0",
+  "identifier": "com.eggr.integrated-power.control-center",
+  "build": {
+    "beforeDevCommand": "pnpm --dir ../vscode-extension compile && npm run prepare:broker && npm run dev",
+    "beforeBuildCommand": "pnpm --dir ../vscode-extension compile && npm run prepare:broker && npm run build",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{ "label": "main", "title": "Integrated Power", "width": 900, "height": 640, "minWidth": 760, "minHeight": 520, "resizable": true, "decorations": true, "alwaysOnTop": false, "skipTaskbar": true }],
+    "security": { "csp": "default-src 'self' http://127.0.0.1:37241; connect-src 'self' http://127.0.0.1:37241" }
+  },
+  "bundle": { "active": true, "targets": "all", "icon": ["icons/icon.ico", "icons/icon.png"], "resources": ["resources/broker-server.js", "resources/mcp-server.js", "resources/node-runtime.exe", "resources/broker-out", "resources/node_modules"] }
+}

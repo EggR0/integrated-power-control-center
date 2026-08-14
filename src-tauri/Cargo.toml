@@ -1,0 +1,16 @@
+[package]
+name = "integrated-power-control-center"
+version = "0.8.0"
+description = "Integrated Power local control center"
+authors = ["EggR"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+default = ["custom-protocol"]
