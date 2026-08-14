@@ -8,54 +8,246 @@
   <body>
     <div id="app-shell" class="manager-shell">
       <aside id="sidebar" class="sidebar">
-        <div class="brand"><span class="brand-mark">✦</span><span>Integrated Power</span></div>
+        <div class="brand">
+          <span class="brand-mark">✦</span>
+          <span>Integrated Power</span>
+        </div>
         <nav aria-label="주 메뉴">
-          <button id="nav-home" class="nav-link active" data-section="home">⌂<span>홈</span></button>
-          <button id="nav-agents" class="nav-link" data-section="agents">◈<span>에이전트</span></button>
-          <button id="nav-tasks" class="nav-link" data-section="tasks-section">☷<span>작업</span></button>
-          <button id="nav-logs" class="nav-link" data-section="logs">▤<span>로그</span></button>
-          <button id="nav-settings" class="nav-link" data-section="settings">⚙<span>설정</span></button>
+          <button id="nav-home" class="nav-link active" data-section="home">
+            <span class="nav-icon">⌂</span><span>홈</span>
+          </button>
+          <button id="nav-agents" class="nav-link" data-section="agents">
+            <span class="nav-icon">◈</span><span>에이전트</span>
+          </button>
+          <button id="nav-tasks" class="nav-link" data-section="tasks">
+            <span class="nav-icon">☷</span><span>작업</span>
+          </button>
+          <button id="nav-logs" class="nav-link log-button" data-section="logs">
+            <span class="nav-icon">▤</span><span>로그</span>
+          </button>
+          <button id="nav-settings" class="nav-link" data-section="settings">
+            <span class="nav-icon">⚙</span><span>설정</span>
+          </button>
         </nav>
-        <div class="sidebar-footer">loopback 전용</div>
+        <div class="sidebar-footer">v0.8.0 · loopback 37241</div>
       </aside>
 
       <main id="main-view" class="content">
         <header class="topbar">
-          <div><p class="eyebrow">통합 관제 센터</p><h1>PC 상태와 AI 작업을 한곳에서</h1></div>
-          <div class="topbar-actions"><span id="connection-dot" class="connection-dot offline"></span><span id="connection-label">브로커 연결 대기중</span><button id="log-button" class="button secondary">브로커 로그</button><button id="connection-refresh" class="icon-button" title="연결 새로고침" aria-label="연결 새로고침">↻</button></div>
+          <div>
+            <p id="page-eyebrow" class="eyebrow">통합 관제 센터</p>
+            <h1 id="page-title">PC 상태와 AI 작업을 한곳에서</h1>
+          </div>
+          <div class="topbar-actions">
+            <div class="connection-badge">
+              <span id="connection-dot" class="connection-dot offline"></span>
+              <span id="connection-label">브로커 연결 확인 중…</span>
+            </div>
+            <button id="connection-refresh" class="icon-button" title="새로고침" aria-label="새로고침">↻</button>
+          </div>
         </header>
 
-        <section id="home" class="view-section">
+        <!-- VIEW 1: HOME -->
+        <section id="view-home" class="view-section active">
           <div class="hero card">
-            <div class="hero-copy"><span class="hero-icon">◌</span><div><h2>주 연결 대상</h2><p>이 화면에서 먼저 연결할 에이전트를 확인합니다.</p></div></div>
-            <div class="hero-controls"><label for="main-agent-select">메인 에이전트</label><select id="main-agent-select"></select><button id="main-agent-connect" class="button primary">연결 상태 확인</button></div>
+            <div class="hero-copy">
+              <span class="hero-icon">◌</span>
+              <div>
+                <h2>주 연결 대상</h2>
+                <p>메인으로 연동하여 제어할 AI 에이전트를 선택합니다.</p>
+              </div>
+            </div>
+            <div class="hero-controls">
+              <select id="main-agent-select" aria-label="메인 에이전트 선택"></select>
+            </div>
           </div>
 
           <div id="main-agent-card" class="agent-hero card">
-            <div class="agent-heading"><div><p class="eyebrow">현재 선택</p><h2 id="main-agent-name">에이전트 확인 중…</h2></div><span id="main-agent-status" class="status-pill waiting">연결 대기중</span></div>
+            <div class="agent-heading">
+              <div>
+                <p class="eyebrow">현재 선택된 에이전트</p>
+                <h2 id="main-agent-name">에이전트 확인 중…</h2>
+              </div>
+              <span id="main-agent-status" class="status-pill not-installed">확인중</span>
+            </div>
             <p id="main-agent-detail" class="agent-detail">브로커에 연결되면 실제 실행 방식과 엔드포인트를 표시합니다.</p>
             <div id="main-agent-actions" class="agent-quick-actions"></div>
           </div>
-          <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
-          <div class="section-heading"><div><p class="eyebrow">상태 요약</p><h2>연결된 에이전트</h2></div><button id="agent-refresh" class="button secondary">새로고침</button></div>
-          <div id="agent-list" class="agent-grid"><div class="empty-card">에이전트 상태를 불러오는 중…</div></div>
+          <div class="stat-grid">
+            <div class="stat-card card">
+              <div class="stat-icon">⚡</div>
+              <div class="stat-info">
+                <span class="stat-label">브로커 서비스</span>
+                <strong id="stat-broker" class="stat-value">가동중 (37241)</strong>
+              </div>
+            </div>
+            <div class="stat-card card">
+              <div class="stat-icon">🤖</div>
+              <div class="stat-info">
+                <span class="stat-label">사용가능 에이전트</span>
+                <strong id="stat-agents" class="stat-value">- / 8개</strong>
+              </div>
+            </div>
+            <div class="stat-card card">
+              <div class="stat-icon">📋</div>
+              <div class="stat-info">
+                <span class="stat-label">진행 중인 작업</span>
+                <strong id="stat-tasks" class="stat-value">0건</strong>
+              </div>
+            </div>
+            <div class="stat-card card">
+              <div class="stat-icon">🔐</div>
+              <div class="stat-info">
+                <span class="stat-label">승인 대기 요청</span>
+                <strong id="stat-approvals" class="stat-value">0건</strong>
+              </div>
+            </div>
+          </div>
 
-          <div class="section-heading" id="tasks-section"><div><p class="eyebrow">작업 관리</p><h2>새 작업</h2></div></div>
-          <section id="task-form" class="card task-composer">
-            <div class="form-grid"><label>작업 제목<input id="title" value="Integrated Power 작업" /></label><label>작업공간 경로<input id="workspace" placeholder="선택 사항" /></label></div>
-            <label>목표<textarea id="goal">현재 작업 상태를 확인하고 필요한 에이전트에 위임합니다.</textarea></label>
-            <div class="composer-actions"><span id="selected-agent-hint" class="muted">메인 에이전트로 작업을 시작합니다.</span><button id="create" class="button primary">작업 시작</button></div>
-          </section>
-
-          <div class="columns"><section class="card"><div class="section-heading compact"><h2>진행 중인 작업</h2></div><div id="tasks"><div class="empty-card">작업을 불러오는 중…</div></div></section><section class="card"><div class="section-heading compact"><h2>승인 대기</h2></div><div id="approvals"><div class="empty-card">승인 요청을 불러오는 중…</div></div></section></div>
-          <div id="integrations" class="sr-only"></div><div id="installation" class="sr-only"></div>
+          <div class="quick-nav-row">
+            <button class="button secondary quick-nav-btn" data-target="agents">◈ 에이전트 전체 상태 보기 →</button>
+            <button class="button secondary quick-nav-btn" data-target="tasks">☷ 새 작업 작성하기 →</button>
+            <button class="button secondary quick-nav-btn" data-target="logs">▤ 브로커 로그 확인 →</button>
+          </div>
         </section>
 
-        <footer class="statusbar"><span id="status" class="muted">브로커 상태를 확인하는 중…</span><span>Windows 11 스타일 · loopback</span></footer>
-      </main>
+        <!-- VIEW 2: AGENTS -->
+        <section id="view-agents" class="view-section">
+          <div class="section-subhead">
+            <div>
+              <h2>연결된 에이전트 현황</h2>
+              <p class="muted">총 8개 공급자의 설치 및 MCP 연동 상태를 실시간 진단합니다.</p>
+            </div>
+            <div class="legend-pills">
+              <span class="status-pill available">사용가능</span>
+              <span class="status-pill waiting">대기</span>
+              <span class="status-pill unlinked">연동X</span>
+              <span class="status-pill not-installed">설치X</span>
+            </div>
+          </div>
+          <div id="agent-list" class="agent-grid-full">
+            <div class="empty-card">에이전트 상태를 불러오는 중…</div>
+          </div>
+        </section>
 
-      <aside id="log-panel" class="log-overlay hidden" aria-hidden="true"><div class="log-window"><div class="log-header"><div><p class="eyebrow">진단 도구</p><h2>브로커 로그</h2></div><button id="close-logs" class="icon-button" aria-label="로그 닫기">×</button></div><p id="log-path" class="muted">로그 파일을 확인하는 중…</p><pre id="log-lines" class="log-content">로그를 불러오는 중…</pre><div class="log-actions"><button id="log-refresh" class="button secondary">새로고침</button></div></div></aside>
+        <!-- VIEW 3: TASKS -->
+        <section id="view-tasks" class="view-section">
+          <div class="tasks-layout">
+            <div class="task-composer card">
+              <div class="section-heading compact">
+                <h2>새 작업 작성</h2>
+              </div>
+              <div class="form-grid">
+                <label>작업 제목
+                  <input id="title" value="Integrated Power 작업" />
+                </label>
+                <label>작업공간 경로
+                  <input id="workspace" placeholder="선택 사항" />
+                </label>
+              </div>
+              <label class="form-full">목표 및 실행 명령
+                <textarea id="goal">현재 작업 상태를 확인하고 필요한 에이전트에 위임합니다.</textarea>
+              </label>
+              <div class="composer-actions">
+                <span id="selected-agent-hint" class="muted">메인 에이전트로 작업을 시작합니다.</span>
+                <button id="create" class="button primary">작업 시작</button>
+              </div>
+            </div>
+
+            <div class="tasks-monitoring">
+              <div class="card sub-panel">
+                <div class="section-heading compact">
+                  <h2>진행 중인 작업</h2>
+                </div>
+                <div id="tasks" class="scroll-list">
+                  <div class="empty-card">작업을 불러오는 중…</div>
+                </div>
+              </div>
+
+              <div class="card sub-panel">
+                <div class="section-heading compact">
+                  <h2>승인 대기 요청</h2>
+                </div>
+                <div id="approvals" class="scroll-list">
+                  <div class="empty-card">승인 요청을 불러오는 중…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- VIEW 4: LOGS -->
+        <section id="view-logs" class="view-section">
+          <div class="log-panel card">
+            <div class="log-header">
+              <div>
+                <h2>브로커 실시간 로그</h2>
+                <p id="log-path" class="muted">로그 파일 경로 확인 중…</p>
+              </div>
+              <div class="log-actions">
+                <button id="log-copy-btn" class="button secondary">📋 로그 복사</button>
+                <button id="log-refresh-btn" class="button secondary">↻ 새로고침</button>
+              </div>
+            </div>
+            <pre id="log-lines" class="log-content">로그를 불러오는 중…</pre>
+          </div>
+        </section>
+
+        <!-- VIEW 5: SETTINGS -->
+        <section id="view-settings" class="view-section">
+          <div class="settings-grid">
+            <div class="card settings-card">
+              <h3>🌐 브로커 네트워크 엔드포인트</h3>
+              <div class="setting-item">
+                <span class="setting-label">바인드 주소</span>
+                <code class="code-box">http://127.0.0.1:37241</code>
+              </div>
+              <div class="setting-item">
+                <span class="setting-label">MCP SSE 엔드포인트 (ChatGPT)</span>
+                <code class="code-box">http://127.0.0.1:37241/mcp</code>
+              </div>
+              <div class="setting-item">
+                <span class="setting-label">A2A 프로토콜 카드</span>
+                <code class="code-box">http://127.0.0.1:37241/.well-known/agent-card.json</code>
+              </div>
+            </div>
+
+            <div class="card settings-card">
+              <h3>🔌 호스트 AI 연동 구성</h3>
+              <div class="setting-item">
+                <span class="setting-label">Claude Desktop</span>
+                <p class="muted"><code>%APPDATA%\Claude\claude_desktop_config.json</code> 원클릭 자동 등록 지원</p>
+                <button id="btn-settings-claude" class="button secondary register-claude">⚡ Claude MCP 자동 등록</button>
+              </div>
+              <div class="setting-item">
+                <span class="setting-label">ChatGPT Desktop</span>
+                <p class="muted">맞춤형 MCP > <code>스트리밍 가능한 HTTP</code> > <code>http://127.0.0.1:37241/mcp</code></p>
+                <button id="btn-settings-chatgpt" class="button secondary copy-chatgpt-mcp">📋 ChatGPT URL 복사</button>
+              </div>
+            </div>
+
+            <div class="card settings-card">
+              <h3>🔒 암호화 원장 및 로컬 저장소</h3>
+              <div class="setting-item">
+                <span class="setting-label">상태 저장 디렉터리</span>
+                <code class="code-box" id="settings-state-path">%LOCALAPPDATA%\IntegratedPower\state</code>
+              </div>
+              <div class="setting-item">
+                <span class="setting-label">원장 암호화 알고리즘</span>
+                <span class="setting-val">AES-256-GCM (Windows DPAPI / Keychain 보호)</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+        <footer class="statusbar">
+          <span id="status" class="muted">브로커 상태를 확인하는 중…</span>
+          <span>Integrated Power v0.8.0 · Windows 11 loopback</span>
+        </footer>
+      </main>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

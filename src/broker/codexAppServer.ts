@@ -24,10 +24,14 @@ export class CodexAppServerAdapter implements AgentAdapter {
     const candidates = this.executable ? [this.executable] : process.env.INTEGRATED_POWER_CODEX_EXE ? [process.env.INTEGRATED_POWER_CODEX_EXE] : await findCodexCandidates();
     const executable = await firstCallable(candidates) ?? candidates[0];
     const callable = Boolean(executable && await canExecute(executable));
+    const stateKind = callable ? "available" : executable ? "waiting" : "not_installed";
+    const stateLabel = callable ? "사용가능" : executable ? "대기" : "설치X";
     return {
       provider: this.provider,
       label: "Codex App Server",
       available: callable,
+      stateKind,
+      stateLabel,
       mode: "app-server",
       capabilities: ["leader", "executor", "local-mcp", "code-write", "streaming", "cancel"],
       endpoint: executable,

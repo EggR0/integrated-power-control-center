@@ -24,15 +24,19 @@ export class DiscoveryAdapter implements AgentAdapter {
         provider: this.provider,
         label: this.label,
         available: false,
+        stateKind: "not_installed",
+        stateLabel: "설치X",
         mode: this.mode,
         capabilities: this.baseCapabilities,
-        reason: `${this.executableNames[0]} was not found on PATH.`,
+        reason: `${this.executableNames[0] || this.label}가 설치되어 있지 않거나 PATH에 없습니다.`,
       };
     }
     return {
       provider: this.provider,
       label: this.label,
       available: true,
+      stateKind: "available",
+      stateLabel: "사용가능",
       mode: this.mode,
       capabilities: this.baseCapabilities,
       endpoint: executable,
@@ -71,6 +75,8 @@ export class DeferredGuiAdapter extends DiscoveryAdapter {
       provider: this.provider,
       label: this.bridgeHint,
       available: false,
+      stateKind: "not_installed",
+      stateLabel: "설치X",
       mode: this.bridgeMode,
       capabilities: ["leader", "executor", "remote-mcp", "streaming"],
       reason: `Waiting for an official ${this.bridgeHint} plugin/MCP submission bridge; linked conversations remain private.`,
@@ -91,6 +97,8 @@ export class HostMcpAdapter extends DeferredGuiAdapter {
       provider: status.provider,
       label: status.label,
       available: status.available,
+      stateKind: status.stateKind,
+      stateLabel: status.stateLabel,
       mode: status.mode,
       capabilities: status.capabilities,
       endpoint: status.endpoint || status.configPath,
@@ -195,14 +203,17 @@ export class AgyCliAdapter implements AgentAdapter {
     const executable = findExecutableOnPath(
       process.platform === "win32" ? ["agy.cmd", "agy.exe", "agy.bat", "agy"] : ["agy"],
     );
+    const available = Boolean(executable);
     return {
       provider: this.provider,
       label: "Antigravity IDE / Agy",
-      available: Boolean(executable),
+      available,
+      stateKind: available ? "available" : "not_installed",
+      stateLabel: available ? "사용가능" : "설치X",
       mode: "cli",
       capabilities: ["leader", "executor", "local-mcp", "code-write", "streaming", "cancel"],
       endpoint: executable,
-      reason: executable ? undefined : "agy CLI was not found on PATH.",
+      reason: executable ? undefined : "agy CLI가 설치되어 있지 않거나 PATH에 없습니다.",
     };
   }
 
@@ -263,7 +274,7 @@ export class OpenAiCompatibleLocalAdapter implements AgentAdapter {
 
   public async discover(): Promise<AgentCapability> {
     if (process.platform !== "win32") {
-      return { provider: this.provider, label: "Local LLM (legacy policy adapter)", available: false, mode: "local", capabilities: ["executor", "local-mcp", "streaming"], endpoint: this.endpoint, reason: "The Windows legacy selector/runner is the current first-wave authority." };
+      return { provider: this.provider, label: "Local LLM (legacy policy adapter)", available: false, stateKind: "not_installed", stateLabel: "설치X", mode: "local", capabilities: ["executor", "local-mcp", "streaming"], endpoint: this.endpoint, reason: "The Windows legacy selector/runner is the current first-wave authority." };
     }
     try {
       if (!legacyLocalRunnerAvailable()) throw new Error("Legacy selector/runner scripts are not installed.");
@@ -272,6 +283,8 @@ export class OpenAiCompatibleLocalAdapter implements AgentAdapter {
         provider: this.provider,
         label: "Local LLM (legacy selector/runner)",
         available: true,
+        stateKind: "available",
+        stateLabel: "사용가능",
         mode: "local",
         capabilities: ["executor", "local-mcp", "streaming"],
         model: process.env.INTEGRATED_POWER_LOCAL_MODEL || "qwen3.6:27b",
@@ -279,7 +292,7 @@ export class OpenAiCompatibleLocalAdapter implements AgentAdapter {
         reason: `Selection is delegated to Select-LocalLLMModel.ps1 (${scriptsRoot}).`,
       };
     } catch (error) {
-      return { provider: this.provider, label: "Local LLM (legacy selector/runner)", available: false, mode: "local", capabilities: ["executor", "local-mcp", "streaming"], endpoint: this.endpoint, reason: error instanceof Error ? error.message : String(error) };
+      return { provider: this.provider, label: "Local LLM (legacy selector/runner)", available: false, stateKind: "not_installed", stateLabel: "설치X", mode: "local", capabilities: ["executor", "local-mcp", "streaming"], endpoint: this.endpoint, reason: error instanceof Error ? error.message : String(error) };
     }
   }
 

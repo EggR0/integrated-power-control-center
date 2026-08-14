@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { AgentCapability, ProviderId } from "./protocol";
+import { AgentCapability, AgentStateKind, ProviderId } from "./protocol";
 
 /**
  * Host integrations are inbound MCP clients. They can create, delegate,
@@ -14,6 +14,8 @@ export interface HostIntegrationStatus {
   provider: ProviderId;
   label: string;
   available: boolean;
+  stateKind: AgentStateKind;
+  stateLabel: string;
   mode: AgentCapability["mode"];
   capabilities: AgentCapability["capabilities"];
   endpoint?: string;
@@ -38,6 +40,8 @@ export function inspectHostIntegration(provider: ProviderId): HostIntegrationSta
         provider,
         label: "Claude Cowork",
         available: false,
+        stateKind: "not_installed",
+        stateLabel: "설치X",
         mode: "gui",
         capabilities: ["leader", "remote-mcp", "streaming"],
         reason: "Remote Cowork control is disabled until an official broker bridge is available; no GUI automation or credential reuse is attempted.",
@@ -56,32 +60,89 @@ export function listHostIntegrations(): HostIntegrationStatus[] {
   ];
 }
 
+function isChatGptInstalled(): boolean {
+  if (process.platform === "win32") {
+    const local = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+    const candidates = [
+      path.join(local, "Programs", "ChatGPT", "ChatGPT.exe"),
+      path.join(programFiles, "ChatGPT", "ChatGPT.exe"),
+    ];
+    if (candidates.some((c) => fs.existsSync(c))) return true;
+    const packagesDir = path.join(local, "Packages");
+    try {
+      if (fs.existsSync(packagesDir)) {
+        const entries = fs.readdirSync(packagesDir);
+        if (entries.some((e) => e.startsWith("OpenAI.ChatGPT") || e.startsWith("OpenAI.Codex"))) return true;
+      }
+    } catch { /* best effort */ }
+  }
+  if (process.platform === "darwin") return fs.existsSync("/Applications/ChatGPT.app");
+  return false;
+}
+
+function isClaudeInstalled(): boolean {
+  if (process.platform === "win32") {
+    const local = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+    const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
+    const candidates = [
+      path.join(local, "Programs", "Claude", "Claude.exe"),
+      path.join(programFiles, "Claude", "Claude.exe"),
+      path.join(appData, "Claude"),
+    ];
+    return candidates.some((c) => fs.existsSync(c));
+  }
+  if (process.platform === "darwin") return fs.existsSync("/Applications/Claude.app");
+  return fs.existsSync("/usr/bin/claude") || fs.existsSync("/usr/local/bin/claude");
+}
+
 function inspectChatGpt(): HostIntegrationStatus {
   const config = readHostIntegrationConfig();
   const endpoint = (process.env.INTEGRATED_POWER_CHATGPT_MCP_URL || config.chatgptMcpUrl)?.trim();
   const validRemote = Boolean(endpoint && /^https:\/\//i.test(endpoint));
+  const installed = isChatGptInstalled();
+
+  let stateKind: AgentStateKind = "not_installed";
+  let stateLabel = "설치X";
+  let reason: string | undefined = "ChatGPT 데스크톱 앱이 설치되어 있지 않습니다.";
+
+  if (validRemote) {
+    stateKind = "available";
+    stateLabel = "사용가능";
+    reason = undefined;
+  } else if (installed) {
+    stateKind = "unlinked";
+    stateLabel = "연동X";
+    reason = "ChatGPT 데스크톱이 설치되어 있습니다. 맞춤형 MCP에서 'http://127.0.0.1:37241/mcp'로 연결하세요.";
+  }
+
   return {
     provider: "openai.chatgpt.app",
     label: "ChatGPT desktop/web MCP app",
     available: validRemote,
+    stateKind,
+    stateLabel,
     mode: "gui",
     capabilities: ["leader", "remote-mcp", "streaming"],
     endpoint: validRemote ? endpoint : undefined,
-    reason: validRemote
-      ? undefined
-      : "ChatGPT custom MCP apps require a user-approved remote HTTPS MCP endpoint. A loopback server is not exposed automatically; configure a Secure MCP Tunnel URL explicitly.",
-    setup: "Create/enable an approved MCP app in ChatGPT and set INTEGRATED_POWER_CHATGPT_MCP_URL to its HTTPS tunnel URL.",
+    reason,
+    setup: "ChatGPT 맞춤형 MCP에 'http://127.0.0.1:37241/mcp'를 등록하여 로컬 브로커와 연동합니다.",
   };
 }
 
 function inspectClaudeDesktop(): HostIntegrationStatus {
   const config = readHostIntegrationConfig();
   const remoteEndpoint = (process.env.INTEGRATED_POWER_CLAUDE_MCP_URL || config.claudeMcpUrl)?.trim();
+  const installed = isClaudeInstalled();
+
   if (remoteEndpoint && /^https:\/\//i.test(remoteEndpoint)) {
     return {
       provider: "anthropic.claude.desktop",
       label: "Claude Desktop remote MCP connector",
       available: true,
+      stateKind: "available",
+      stateLabel: "사용가능",
       mode: "gui",
       capabilities: ["leader", "remote-mcp", "streaming"],
       endpoint: remoteEndpoint,
@@ -91,15 +152,32 @@ function inspectClaudeDesktop(): HostIntegrationStatus {
 
   const configPath = claudeDesktopConfigPath();
   const configured = fs.existsSync(configPath) && containsIntegratedPowerMarker(configPath);
+
+  let stateKind: AgentStateKind = "not_installed";
+  let stateLabel = "설치X";
+  let reason: string | undefined = "Claude Desktop 앱이 설치되어 있지 않습니다.";
+
+  if (configured) {
+    stateKind = "available";
+    stateLabel = "사용가능";
+    reason = undefined;
+  } else if (installed) {
+    stateKind = "unlinked";
+    stateLabel = "연동X";
+    reason = "Claude Desktop이 설치되어 있습니다. [자동 등록] 버튼을 눌러 MCP를 연동하세요.";
+  }
+
   return {
     provider: "anthropic.claude.desktop",
     label: "Claude Desktop local MCP",
     available: configured,
+    stateKind,
+    stateLabel,
     mode: "gui",
     capabilities: ["leader", "local-mcp", "streaming"],
     configPath,
-    reason: configured ? undefined : "Claude Desktop local MCP is not configured for Integrated Power.",
-    setup: "Add the provided integrated-power MCP server to Claude Desktop, then restart Claude Desktop.",
+    reason,
+    setup: "Claude Desktop 설정에 integrated-power MCP 서버를 추가합니다.",
   };
 }
 

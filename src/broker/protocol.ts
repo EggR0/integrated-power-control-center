@@ -68,10 +68,14 @@ export interface TaskEnvelope {
   updatedAt: string;
 }
 
+export type AgentStateKind = "not_installed" | "unlinked" | "waiting" | "error" | "available";
+
 export interface AgentCapability {
   provider: ProviderId;
   label: string;
   available: boolean;
+  stateKind?: AgentStateKind;
+  stateLabel?: string;
   mode: "gui" | "app-server" | "cli" | "api" | "local";
   capabilities: Array<
     | "leader"
