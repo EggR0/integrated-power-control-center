@@ -118,20 +118,24 @@ export class EncryptedEventLedger implements EventLedger {
     }
     const events: TaskEvent[] = [];
     for (const line of text.split(/\r?\n/).filter(Boolean)) {
-      const record = JSON.parse(line) as EncryptedRecord;
-      if (record.version !== 1) throw new Error("Unsupported event ledger record version.");
-      const decipher = crypto.createDecipheriv(
-        "aes-256-gcm",
-        this.key,
-        Buffer.from(record.iv, "base64url"),
-      );
-      decipher.setAuthTag(Buffer.from(record.tag, "base64url"));
-      const plaintext = Buffer.concat([
-        decipher.update(Buffer.from(record.ciphertext, "base64url")),
-        decipher.final(),
-      ]).toString("utf8");
-      const event = JSON.parse(plaintext) as TaskEvent;
-      if (!taskId || event.taskId === taskId) events.push(event);
+      try {
+        const record = JSON.parse(line) as EncryptedRecord;
+        if (record.version !== 1 || !record.iv || !record.tag || !record.ciphertext) continue;
+        const decipher = crypto.createDecipheriv(
+          "aes-256-gcm",
+          this.key,
+          Buffer.from(record.iv, "base64url"),
+        );
+        decipher.setAuthTag(Buffer.from(record.tag, "base64url"));
+        const plaintext = Buffer.concat([
+          decipher.update(Buffer.from(record.ciphertext, "base64url")),
+          decipher.final(),
+        ]).toString("utf8");
+        const event = JSON.parse(plaintext) as TaskEvent;
+        if (!taskId || event.taskId === taskId) events.push(event);
+      } catch {
+        // Gracefully ignore legacy binary SQLite data or unparseable records
+      }
     }
     return events;
   }

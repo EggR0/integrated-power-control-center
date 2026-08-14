@@ -26,11 +26,10 @@ export async function startBrokerServer(
     // The desktop control center is a local Tauri webview. This is intentionally
     // loopback-only; the server never binds to a LAN/public interface.
     const origin = request.headers.origin;
-    if (origin === "tauri://localhost" || origin === "http://tauri.localhost" || origin === "https://tauri.localhost" || origin === "http://127.0.0.1:5173" || origin === "http://localhost:5173") {
-      response.setHeader("Access-Control-Allow-Origin", origin);
-    }
+    response.setHeader("Access-Control-Allow-Origin", origin || "*");
     response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    response.setHeader("Access-Control-Allow-Headers", "content-type");
+    response.setHeader("Access-Control-Allow-Headers", "content-type, mcp-protocol-version, authorization, x-requested-with");
+    response.setHeader("Access-Control-Expose-Headers", "content-type, mcp-protocol-version");
     if (request.method === "OPTIONS") return send(response, 204, {});
     try {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -45,19 +44,29 @@ export async function startBrokerServer(
         const content = await fs.promises.readFile(logPath, "utf8").catch(() => "");
         return send(response, 200, { path: logPath, lines: content.split(/\r?\n/).filter(Boolean).slice(-lines) });
       }
-      if (request.method === "POST" && url.pathname === "/mcp") {
+      if (request.method === "GET" && (url.pathname === "/mcp" || url.pathname === "/sse")) {
+        response.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          "Access-Control-Allow-Origin": origin || "*",
+        });
+        const host = request.headers.host || "127.0.0.1:37241";
+        const endpointUrl = `http://${host}/mcp`;
+        response.write(`event: endpoint\ndata: ${endpointUrl}\n\n`);
+        const keepAliveTimer = setInterval(() => {
+          try { response.write(": keepalive\n\n"); } catch { clearInterval(keepAliveTimer); }
+        }, 15000);
+        request.on("close", () => { clearInterval(keepAliveTimer); });
+        return;
+      }
+      if (request.method === "POST" && (url.pathname === "/mcp" || url.pathname === "/sse")) {
         const payload = await readJson(request) as any;
-        if (payload?.method !== "initialize" && request.headers["mcp-protocol-version"] && request.headers["mcp-protocol-version"] !== "2025-06-18") {
-          return send(response, 400, { error: "unsupported_mcp_protocol_version" });
-        }
-        if (payload?.method === "initialize") response.setHeader("MCP-Protocol-Version", "2025-06-18");
+        const protoVersion = String(request.headers["mcp-protocol-version"] || payload?.params?.protocolVersion || "2024-11-05");
+        response.setHeader("MCP-Protocol-Version", protoVersion);
         const message = await processMcpRequest(broker, payload);
         if (!message) { response.statusCode = 202; return response.end(); }
         return send(response, 200, message);
-      }
-      if (request.method === "GET" && url.pathname === "/mcp") {
-        response.setHeader("Allow", "POST");
-        return send(response, 405, { error: "streamable_http_sse_not_enabled" });
       }
       if (request.method === "GET" && url.pathname === "/.well-known/agent-card.json") {
         const host = request.headers.host || "127.0.0.1:37241";

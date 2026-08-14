@@ -55,7 +55,7 @@ export async function processMcpRequest(broker: IntegratedPowerBroker, request: 
   switch (request.method) {
     case "initialize":
       result = {
-        protocolVersion: "2025-06-18",
+        protocolVersion: request.params?.protocolVersion || "2024-11-05",
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "integrated-power", version: "0.8.0" },
       };
