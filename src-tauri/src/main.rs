@@ -68,7 +68,7 @@ fn main() {
             let _ = fs::create_dir_all(position_file.parent().unwrap_or_else(|| Path::new(".")));
             app.manage(PositionFile(position_file.clone()));
             if let Some(window) = app.get_webview_window("main") {
-                restore_or_place(&window, &position_file);
+                show_and_restore_window(app.handle(), &window);
             }
 
             let show = MenuItem::with_id(app, "show", "Show Integrated Power", true, None::<&str>)?;
@@ -123,8 +123,8 @@ fn main() {
         .expect("error while running Integrated Power control center");
 }
 
-fn show_and_restore_window<R: tauri::Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>) {
-    restore_or_place(window, &position_file(app));
+fn show_and_restore_window<R: tauri::Runtime>(_app: &AppHandle<R>, window: &WebviewWindow<R>) {
+    let _ = window.center();
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();

@@ -10,8 +10,36 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "label": "main", "title": "Integrated Power", "width": 900, "height": 640, "minWidth": 760, "minHeight": 520, "resizable": true, "decorations": true, "alwaysOnTop": false, "skipTaskbar": true }],
-    "security": { "csp": "default-src 'self' http://127.0.0.1:37241; connect-src 'self' http://127.0.0.1:37241" }
+    "windows": [
+      {
+        "label": "main",
+        "title": "Integrated Power Control Center",
+        "width": 900,
+        "height": 640,
+        "minWidth": 800,
+        "minHeight": 560,
+        "resizable": true,
+        "decorations": true,
+        "alwaysOnTop": false,
+        "skipTaskbar": true,
+        "visible": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' http://127.0.0.1:37241; connect-src 'self' http://127.0.0.1:37241"
+    }
   },
-  "bundle": { "active": true, "targets": "all", "icon": ["icons/icon.ico", "icons/icon.png"], "resources": ["resources/broker-server.js", "resources/mcp-server.js", "resources/node-runtime.exe", "resources/broker-out", "resources/node_modules"] }
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "resources": [
+      "resources/broker-server.js",
+      "resources/mcp-server.js",
+      "resources/node-runtime.exe",
+      "resources/broker-out",
+      "resources/node_modules"
+    ]
+  }
 }

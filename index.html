@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Integrated Power</title>
+    <title>Integrated Power - AI 관제 센터</title>
   </head>
   <body>
     <div id="app-shell" class="manager-shell">
@@ -13,7 +13,10 @@
           <span>Integrated Power</span>
         </div>
         <nav aria-label="주 메뉴">
-          <button id="nav-home" class="nav-link active" data-section="home">
+          <button id="nav-tokens" class="nav-link active" data-section="tokens">
+            <span class="nav-icon">⛁</span><span>토큰 상태</span>
+          </button>
+          <button id="nav-home" class="nav-link" data-section="home">
             <span class="nav-icon">⌂</span><span>홈</span>
           </button>
           <button id="nav-agents" class="nav-link" data-section="agents">
@@ -35,8 +38,8 @@
       <main id="main-view" class="content">
         <header class="topbar">
           <div>
-            <p id="page-eyebrow" class="eyebrow">통합 관제 센터</p>
-            <h1 id="page-title">PC 상태와 AI 작업을 한곳에서</h1>
+            <p id="page-eyebrow" class="eyebrow">AI 쿼터 및 토큰 실시간 관제</p>
+            <h1 id="page-title">AI 모델 쿼터 현황 및 리셋 주기</h1>
           </div>
           <div class="topbar-actions">
             <div class="connection-badge">
@@ -47,8 +50,201 @@
           </div>
         </header>
 
-        <!-- VIEW 1: HOME -->
-        <section id="view-home" class="view-section active">
+        <!-- VIEW 1: TOKEN STATUS (DEFAULT VIEW) -->
+        <section id="view-tokens" class="view-section active">
+          <!-- Quick Status & Alert Banner -->
+          <div class="token-header-banner card">
+            <div class="banner-left">
+              <span class="pulse-icon">⚡</span>
+              <div>
+                <h2>AI 모델 실시간 쿼터 & 토큰 상태</h2>
+                <p id="token-last-updated" class="muted">동기화 대기 중…</p>
+              </div>
+            </div>
+            <div class="banner-right">
+              <div class="token-banner-item">
+                <span class="banner-label">작업 라우팅 권고</span>
+                <span id="task-routing-badge" class="task-routing-pill normal">Normal (정상)</span>
+              </div>
+              <div class="token-banner-item">
+                <span class="banner-label">100% 완충 알림</span>
+                <label class="switch-toggle" title="토큰이 100% 충전되면 데스크톱 알림을 받습니다.">
+                  <input type="checkbox" id="token-notify-quick-toggle" checked />
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <button id="token-refresh-btn" class="button primary">↻ 쿼터 즉시 새로고침</button>
+            </div>
+          </div>
+
+          <!-- Provider-Grouped Capacity & Token Grid -->
+          <div class="token-providers-grid">
+            <!-- Group 1: Antigravity IDE -->
+            <div class="card provider-card" id="provider-antigravity">
+              <div class="provider-header">
+                <span class="provider-pill">Antigravity IDE</span>
+                <span class="provider-state-tag">Idle</span>
+              </div>
+              <div class="provider-models">
+                <!-- Gemini 3.1 Pro -->
+                <div class="model-block">
+                  <div class="model-name-row">
+                    <h4>Gemini 3.1 Pro</h4>
+                  </div>
+                  <div class="quota-window-row">
+                    <div class="window-info">
+                      <span class="window-name">5Hours</span>
+                      <span id="label-gemini-5h" class="window-val">--% remaining</span>
+                    </div>
+                    <p id="reset-gemini-5h" class="window-countdown">· Waiting for quota</p>
+                    <div class="progress-track"><div id="bar-gemini-5h" class="progress-fill gemini" style="width: 0%;"></div></div>
+                  </div>
+                  <div class="quota-window-row">
+                    <div class="window-info">
+                      <span class="window-name">Weekly</span>
+                      <span id="label-gemini-weekly" class="window-val">--% remaining</span>
+                    </div>
+                    <p id="reset-gemini-weekly" class="window-countdown">· Waiting for quota</p>
+                    <div class="progress-track"><div id="bar-gemini-weekly" class="progress-fill gemini" style="width: 0%;"></div></div>
+                  </div>
+                </div>
+
+                <!-- Opus 4.6 Thinking -->
+                <div class="model-block" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06);">
+                  <div class="model-name-row">
+                    <h4>Opus 4.6 Thinking</h4>
+                  </div>
+                  <div class="quota-window-row">
+                    <div class="window-info">
+                      <span class="window-name">5Hours</span>
+                      <span id="label-opus-5h" class="window-val">--% remaining</span>
+                    </div>
+                    <p id="reset-opus-5h" class="window-countdown">· Waiting for quota</p>
+                    <div class="progress-track"><div id="bar-opus-5h" class="progress-fill opus" style="width: 0%;"></div></div>
+                  </div>
+                  <div class="quota-window-row">
+                    <div class="window-info">
+                      <span class="window-name">Weekly</span>
+                      <span id="label-opus-weekly" class="window-val">--% remaining</span>
+                    </div>
+                    <p id="reset-opus-weekly" class="window-countdown">· Waiting for quota</p>
+                    <div class="progress-track"><div id="bar-opus-weekly" class="progress-fill opus" style="width: 0%;"></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Group 2: Codex -->
+            <div class="card provider-card" id="provider-codex">
+              <div class="provider-header">
+                <span class="provider-pill">Codex</span>
+                <span id="codex-status-tag" class="provider-state-tag">Idle</span>
+              </div>
+              <div class="provider-models">
+                <!-- ChatGPT -->
+                <div class="model-block">
+                  <div class="model-name-row">
+                    <h4>ChatGPT</h4>
+                  </div>
+                  <div class="quota-window-row">
+                    <div class="window-info">
+                      <span class="window-name">5Hours</span>
+                      <span id="label-codex-5h" class="window-val">Waiting for quota data</span>
+                    </div>
+                    <div class="progress-track"><div id="bar-codex-5h" class="progress-fill codex" style="width: 0%;"></div></div>
+                  </div>
+                  <div class="quota-window-row">
+                    <div class="window-info">
+                      <span class="window-name">Weekly</span>
+                      <span id="label-codex-weekly" class="window-val">--% remaining</span>
+                    </div>
+                    <p id="reset-codex-weekly" class="window-countdown">· Waiting for quota</p>
+                    <div class="progress-track"><div id="bar-codex-weekly" class="progress-fill codex" style="width: 0%;"></div></div>
+                  </div>
+                </div>
+
+                <!-- Claude Direct Usage -->
+                <div class="model-block" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06);">
+                  <div class="model-name-row">
+                    <h4>Claude Direct Usage (API/CLI/Cowork)</h4>
+                  </div>
+                  <div class="usage-mini-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;">
+                    <div style="background:#0f172a; padding:8px; border-radius:6px;">
+                      <span style="font-size:11px; color:#94a3b8;">Today</span>
+                      <div id="claude-today-tokens" style="font-weight:700; font-size:14px; color:#e2e8f0;">142,500 <span style="font-size:10px; color:#64748b;">tokens</span></div>
+                      <div style="font-size:10px; color:#94a3b8; margin-top:2px;">과금: <span id="claude-today-billable">128,000</span></div>
+                    </div>
+                    <div style="background:#0f172a; padding:8px; border-radius:6px;">
+                      <span style="font-size:11px; color:#94a3b8;">7 Days</span>
+                      <div id="claude-7d-tokens" style="font-weight:700; font-size:14px; color:#e2e8f0;">892,000 <span style="font-size:10px; color:#64748b;">tokens</span></div>
+                      <div style="font-size:10px; color:#94a3b8; margin-top:2px;">이벤트: <span id="claude-7d-events">42건</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Group 3: Local LLM -->
+            <div class="card provider-card" id="provider-local">
+              <div class="provider-header">
+                <span class="provider-pill">Local LLM</span>
+                <span id="local-llm-status-tag" class="provider-state-tag">Offline</span>
+              </div>
+              <div class="provider-models">
+                <div id="gpu-status-container" class="gpu-status-list">
+                  <!-- Dynamically populated multi-GPU cards -->
+                </div>
+                <div class="local-compute-footer" style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#94a3b8;">
+                  <div>가동 모델: <strong id="local-loaded-model" style="color:#38bdf8;">qwen3.6:27b</strong></div>
+                  <div>엔드포인트: <span id="local-endpoint-health">정상 (127.0.0.1:11434)</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Local LLM Benchmark & Execution History -->
+          <div class="card local-metrics-card" style="margin-top: 16px;">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Execution Benchmarks</p>
+                <h3>로컬 LLM 성능 벤치마크 및 실행 기록 (.agent-runs)</h3>
+              </div>
+              <span class="muted" id="local-metrics-summary">기록 확인 중…</span>
+            </div>
+            <div class="table-responsive" style="max-height: 220px; overflow-y: auto; margin-top: 10px;">
+              <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                <thead>
+                  <tr style="border-bottom: 1px solid #334155; color: #94a3b8;">
+                    <th style="padding: 6px 8px;">시간</th>
+                    <th style="padding: 6px 8px;">작업명</th>
+                    <th style="padding: 6px 8px;">모델</th>
+                    <th style="padding: 6px 8px;">규모</th>
+                    <th style="padding: 6px 8px;">소요 시간</th>
+                    <th style="padding: 6px 8px;">토큰수</th>
+                    <th style="padding: 6px 8px;">처리 속도</th>
+                    <th style="padding: 6px 8px;">상태</th>
+                  </tr>
+                </thead>
+                <tbody id="local-metrics-tbody">
+                  <tr><td colspan="8" style="padding: 12px; text-align: center; color: #64748b;">로컬 실행 기록을 불러오는 중…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Activity & Reset Log -->
+          <div class="card token-activity-card">
+            <div class="section-heading compact">
+              <h3>실시간 토큰 쿼터 이벤트 & 리셋 로그</h3>
+            </div>
+            <ul id="token-activity-list" class="activity-log-list">
+              <li>실시간 토큰 쿼터 모니터링이 시작되었습니다.</li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- VIEW 2: HOME -->
+        <section id="view-home" class="view-section">
           <div class="hero card">
             <div class="hero-copy">
               <span class="hero-icon">◌</span>
@@ -106,13 +302,14 @@
           </div>
 
           <div class="quick-nav-row">
+            <button class="button secondary quick-nav-btn" data-target="tokens">⛁ 실시간 토큰 쿼터 확인 →</button>
             <button class="button secondary quick-nav-btn" data-target="agents">◈ 에이전트 전체 상태 보기 →</button>
             <button class="button secondary quick-nav-btn" data-target="tasks">☷ 새 작업 작성하기 →</button>
             <button class="button secondary quick-nav-btn" data-target="logs">▤ 브로커 로그 확인 →</button>
           </div>
         </section>
 
-        <!-- VIEW 2: AGENTS -->
+        <!-- VIEW 3: AGENTS -->
         <section id="view-agents" class="view-section">
           <div class="section-subhead">
             <div>
@@ -131,7 +328,7 @@
           </div>
         </section>
 
-        <!-- VIEW 3: TASKS -->
+        <!-- VIEW 4: TASKS -->
         <section id="view-tasks" class="view-section">
           <div class="tasks-layout">
             <div class="task-composer card">
@@ -173,11 +370,25 @@
                   <div class="empty-card">승인 요청을 불러오는 중…</div>
                 </div>
               </div>
+
+              <!-- Workspace Agent Runs Timeline (.agent-runs/runs.jsonl) -->
+              <div class="card sub-panel" style="margin-top: 16px;">
+                <div class="section-heading compact">
+                  <div>
+                    <p class="eyebrow">Execution Logs</p>
+                    <h2>에이전트 실행 기록 (.agent-runs)</h2>
+                  </div>
+                  <span id="runs-active-count" class="status-pill status-ok">0개 실행중</span>
+                </div>
+                <div id="runs-timeline-list" class="scroll-list" style="max-height: 280px; overflow-y: auto;">
+                  <div class="empty-card">에이전트 실행 기록을 불러오는 중…</div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
-        <!-- VIEW 4: LOGS -->
+        <!-- VIEW 5: LOGS -->
         <section id="view-logs" class="view-section">
           <div class="log-panel card">
             <div class="log-header">
@@ -194,14 +405,47 @@
           </div>
         </section>
 
-        <!-- VIEW 5: SETTINGS -->
+        <!-- VIEW 6: SETTINGS -->
         <section id="view-settings" class="view-section">
           <div class="settings-grid">
+            <!-- System & Startup Options -->
+            <div class="card settings-card highlight-card">
+              <h3>🚀 시스템 시작 및 백그라운드 가동</h3>
+              <div class="setting-item flex-between">
+                <div>
+                  <span class="setting-label">Windows 시작 시 자동 실행</span>
+                  <p class="muted">컴퓨터를 켜면 Integrated Power 백그라운드 브로커 및 관제 센터가 자동으로 시작됩니다.</p>
+                </div>
+                <label class="switch-toggle">
+                  <input type="checkbox" id="setting-autostart-toggle" />
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="setting-item flex-between">
+                <div>
+                  <span class="setting-label">토큰 100% 완충 시 데스크톱 알림</span>
+                  <p class="muted">AI 쿼터(Gemini/Codex/Claude)가 100% 충전되면 즉시 OS 데스크톱 알림을 보냅니다.</p>
+                </div>
+                <div class="toggle-and-test">
+                  <button id="btn-test-notification" class="button secondary compact-btn">🔔 테스트 알림</button>
+                  <label class="switch-toggle">
+                    <input type="checkbox" id="setting-token-notify-toggle" checked />
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Network Endpoints -->
             <div class="card settings-card">
               <h3>🌐 브로커 네트워크 엔드포인트</h3>
               <div class="setting-item">
                 <span class="setting-label">바인드 주소</span>
                 <code class="code-box">http://127.0.0.1:37241</code>
+              </div>
+              <div class="setting-item">
+                <span class="setting-label">토큰 상태 엔드포인트</span>
+                <code class="code-box">http://127.0.0.1:37241/v1/tokens/status</code>
               </div>
               <div class="setting-item">
                 <span class="setting-label">MCP SSE 엔드포인트 (ChatGPT)</span>
@@ -213,6 +457,7 @@
               </div>
             </div>
 
+            <!-- Host AI Integrations -->
             <div class="card settings-card">
               <h3>🔌 호스트 AI 연동 구성</h3>
               <div class="setting-item">
@@ -227,6 +472,7 @@
               </div>
             </div>
 
+            <!-- Storage & Encryption -->
             <div class="card settings-card">
               <h3>🔒 암호화 원장 및 로컬 저장소</h3>
               <div class="setting-item">
@@ -245,7 +491,7 @@
 
         <footer class="statusbar">
           <span id="status" class="muted">브로커 상태를 확인하는 중…</span>
-          <span>Integrated Power v0.8.0 · Windows 11 loopback</span>
+          <span>Integrated Power v0.8.0 · Windows 11 Fluent loopback</span>
         </footer>
       </main>
     </div>

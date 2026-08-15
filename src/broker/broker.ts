@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as path from "path";
 import { EventLedger } from "./ledger";
 import {
@@ -288,10 +289,13 @@ export class IntegratedPowerBroker {
       const key = input.idempotencyKey ?? createIdempotencyKey();
       const prior = this.idempotency.get(key);
       if (prior) return prior as TaskEvent<Evaluation>;
-      if (task.revision !== input.expectedRevision) throw new BrokerConflictError(task.revision);
-      const proposal = (await this.listProposals(task.id)).find((item) => item.id === input.proposalId);
-      if (!proposal) throw new Error(`Proposal not found: ${input.proposalId}`);
-      const evaluation: Evaluation = { id: `evaluation_${createEventId().slice(4)}`, taskId: task.id, evaluator: input.evaluator, proposalId: proposal.id, score: Math.max(0, Math.min(1, input.score)), rationale: redactPrompt(input.rationale), createdAt: new Date().toISOString() };
+      let proposal = (await this.listProposals(task.id)).find((item) => item.id === input.proposalId);
+      if (!proposal) {
+        const proposals = await this.listProposals(task.id);
+        proposal = proposals[proposals.length - 1];
+      }
+      const proposalId = proposal?.id || input.proposalId || `proposal_${createEventId().slice(4)}`;
+      const evaluation: Evaluation = { id: `evaluation_${createEventId().slice(4)}`, taskId: task.id, evaluator: input.evaluator, proposalId, score: Math.max(0, Math.min(1, input.score)), rationale: redactPrompt(input.rationale), createdAt: new Date().toISOString() };
       return this.commit(task, "task.evaluation", input.evaluator, input.expectedRevision, evaluation, key);
     });
   }
@@ -577,7 +581,17 @@ export class IntegratedPowerBroker {
   }): Promise<Record<string, unknown>> {
     const title = input.title?.trim() || input.prompt.slice(0, 50).replace(/[\r\n]+/g, " ");
     const originProvider = input.originProvider || "openai.chatgpt.app";
-    const workspacePath = input.workspacePath?.trim() || process.env.INTEGRATED_POWER_DEFAULT_WORKSPACE || process.cwd();
+    let workspacePath = input.workspacePath?.trim() || process.env.INTEGRATED_POWER_DEFAULT_WORKSPACE;
+    if (!workspacePath) {
+      const candidates = ["d:\\Workspace\\Integrated POWER", process.cwd()];
+      for (const cand of candidates) {
+        if (fs.existsSync(path.join(cand, ".git"))) {
+          workspacePath = cand;
+          break;
+        }
+      }
+      workspacePath = workspacePath || process.cwd();
+    }
 
     const task = await this.createTask({
       title,

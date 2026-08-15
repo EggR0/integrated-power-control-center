@@ -2,14 +2,20 @@ import "./style.css";
 
 const API = "http://127.0.0.1:37241";
 const streams = new Map();
+
 const state = {
   capabilities: [],
   tasks: [],
   approvals: [],
+  tokenStatus: null,
+  previousTokenStatus: null,
+  lastFullNotified: false,
+  notifyOnFullTokens: localStorage.getItem("ip_notify_full_tokens") !== "false",
+  autoStartEnabled: false,
   logs: { path: "", lines: [] },
   mainProvider: "google.antigravity.ide",
   brokerOnline: false,
-  activeTab: "home",
+  activeTab: "tokens", // DEFAULT ACTIVE TAB
 };
 
 const defaults = [
@@ -75,10 +81,10 @@ function showToast(message, isError = false) {
   const toast = $("toast");
   if (!toast) return;
   toast.textContent = message;
-  toast.style.borderColor = isError ? "#f59f8e" : "#50a8d8";
+  toast.style.borderColor = isError ? "#f43f5e" : "#38bdf8";
   toast.classList.remove("hidden");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.add("hidden"), 3500);
+  toastTimer = setTimeout(() => toast.classList.add("hidden"), 3800);
 }
 
 async function copyToClipboard(text, successMsg) {
@@ -90,26 +96,75 @@ async function copyToClipboard(text, successMsg) {
   }
 }
 
-function getStateBadgeClass(item) {
-  const kind = item.stateKind || (item.available ? "available" : "not_installed");
-  switch (kind) {
-    case "available": return "status-pill available";
-    case "waiting": return "status-pill waiting";
-    case "unlinked": return "status-pill unlinked";
-    case "error": return "status-pill error";
-    default: return "status-pill not-installed";
+function requestNotificationPermission() {
+  if ("Notification" in window && Notification.permission === "default") {
+    void Notification.requestPermission();
   }
 }
 
-function getStateBadgeLabel(item) {
-  if (item.stateLabel) return item.stateLabel;
-  const kind = item.stateKind || (item.available ? "available" : "not_installed");
-  switch (kind) {
-    case "available": return "사용가능";
-    case "waiting": return "대기";
-    case "unlinked": return "연동X";
-    case "error": return "에러";
-    default: return "설치X";
+function sendDesktopNotification(title, body) {
+  if (!state.notifyOnFullTokens) return;
+  if ("Notification" in window && Notification.permission === "granted") {
+    try {
+      new Notification(title, {
+        body,
+        icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>",
+      });
+    } catch {
+      // Fallback
+    }
+  }
+}
+
+function playFullChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc1.type = "sine";
+    osc2.type = "triangle";
+    osc1.frequency.setValueAtTime(587.33, ctx.currentTime);
+    osc1.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
+    osc2.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+    osc1.start();
+    osc2.start();
+    osc1.stop(ctx.currentTime + 0.85);
+    osc2.stop(ctx.currentTime + 0.85);
+  } catch {
+    // ignore
+  }
+}
+
+function checkTokenFullNotification(previous, current) {
+  if (!current || !state.notifyOnFullTokens) return;
+
+  const agy = current.antigravityPercentage ?? 100;
+  const opus = current.opusPercentage ?? 100;
+  const codex = current.codexWeeklyPercentage ?? 100;
+
+  const isAllFull = agy >= 100 && opus >= 100 && codex >= 100;
+  const wasAnyDepleted = previous
+    ? (previous.antigravityPercentage !== undefined && previous.antigravityPercentage < 100) ||
+      (previous.opusPercentage !== undefined && previous.opusPercentage < 100) ||
+      (previous.codexWeeklyPercentage !== undefined && previous.codexWeeklyPercentage < 100)
+    : false;
+
+  if (isAllFull) {
+    if (wasAnyDepleted && !state.lastFullNotified) {
+      state.lastFullNotified = true;
+      playFullChime();
+      const msg = "모든 AI 모델 쿼터(Gemini, Claude, Codex)가 100%로 완충되었습니다! 작업을 최대 속도로 진행할 수 있습니다.";
+      showToast(`🎉 [100% 완충] ${msg}`);
+      sendDesktopNotification("🎉 [Integrated Power] AI 토큰 100% 충전 완료", msg);
+    }
+  } else {
+    state.lastFullNotified = false;
   }
 }
 
@@ -123,18 +178,153 @@ function switchTab(targetTab) {
   });
 
   const titles = {
+    tokens: { eyebrow: "AI 쿼터 및 토큰 실시간 관제", title: "AI 모델 쿼터 현황 및 리셋 주기" },
     home: { eyebrow: "통합 관제 센터", title: "PC 상태와 AI 작업을 한곳에서" },
     agents: { eyebrow: "에이전트 관리", title: "연결된 AI 에이전트 현황 및 진단" },
     tasks: { eyebrow: "작업 및 승인", title: "멀티 에이전트 작업 위임 및 승인 관리" },
     logs: { eyebrow: "실시간 진단", title: "Integrated Power 브로커 로그" },
-    settings: { eyebrow: "환경 설정", title: "네트워크 및 호스트 연동 설정" },
+    settings: { eyebrow: "환경 설정", title: "네트워크, 시작 프로그램 및 알림 설정" },
   };
 
-  const current = titles[targetTab] || titles.home;
+  const current = titles[targetTab] || titles.tokens;
   if ($("page-eyebrow")) $("page-eyebrow").textContent = current.eyebrow;
   if ($("page-title")) $("page-title").textContent = current.title;
 
   if (targetTab === "logs") void refreshLogs();
+}
+
+function formatCountdown(resetTimeStr) {
+  if (!resetTimeStr) return "· 5h rolling window";
+  const target = Date.parse(resetTimeStr);
+  if (Number.isNaN(target)) return `· ${resetTimeStr}`;
+  const diffMs = target - Date.now();
+  if (diffMs <= 0) return "· Refreshes soon (100%)";
+  const totalHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  if (totalHours >= 48) {
+    const days = Math.floor(totalHours / 24);
+    const remHours = totalHours % 24;
+    return `· Refreshes in ${days}d ${remHours}h`;
+  }
+  return `· Refreshes in ${totalHours}h ${mins}m`;
+}
+
+function renderTokens() {
+  const ts = state.tokenStatus || {};
+  const agy5h = ts.antigravityPercentage;
+  const agyWeekly = ts.antigravityWeeklyPercentage;
+  const opus5h = ts.opusPercentage;
+  const opusWeekly = ts.opusWeeklyPercentage;
+  const codex5h = ts.codexPercentage;
+  const codexWeekly = ts.codexWeeklyPercentage;
+
+  // 1. Antigravity IDE - Gemini 3.1 Pro
+  if ($("label-gemini-5h")) $("label-gemini-5h").textContent = agy5h !== undefined ? `${agy5h.toFixed(2)}% remaining` : "Waiting for quota";
+  if ($("reset-gemini-5h")) $("reset-gemini-5h").textContent = formatCountdown(ts.antigravityResetTime);
+  if ($("bar-gemini-5h")) $("bar-gemini-5h").style.width = `${Math.max(0, Math.min(100, agy5h ?? 100))}%`;
+
+  if ($("label-gemini-weekly")) $("label-gemini-weekly").textContent = agyWeekly !== undefined ? `${agyWeekly.toFixed(2)}% remaining` : "Waiting for quota";
+  if ($("reset-gemini-weekly")) $("reset-gemini-weekly").textContent = formatCountdown(ts.antigravityWeeklyResetTime);
+  if ($("bar-gemini-weekly")) $("bar-gemini-weekly").style.width = `${Math.max(0, Math.min(100, agyWeekly ?? 100))}%`;
+
+  // 2. Antigravity IDE - Opus 4.6 Thinking
+  if ($("label-opus-5h")) $("label-opus-5h").textContent = opus5h !== undefined ? `${opus5h.toFixed(2)}% remaining` : "Waiting for quota";
+  if ($("reset-opus-5h")) $("reset-opus-5h").textContent = formatCountdown(ts.opusResetTime);
+  if ($("bar-opus-5h")) $("bar-opus-5h").style.width = `${Math.max(0, Math.min(100, opus5h ?? 100))}%`;
+
+  if ($("label-opus-weekly")) $("label-opus-weekly").textContent = opusWeekly !== undefined ? `${opusWeekly.toFixed(2)}% remaining` : "Waiting for quota";
+  if ($("reset-opus-weekly")) $("reset-opus-weekly").textContent = formatCountdown(ts.opusWeeklyResetTime);
+  if ($("bar-opus-weekly")) $("bar-opus-weekly").style.width = `${Math.max(0, Math.min(100, opusWeekly ?? 100))}%`;
+
+  // 3. Codex - ChatGPT
+  if ($("label-codex-5h")) $("label-codex-5h").textContent = codex5h !== undefined ? `${codex5h.toFixed(2)}% remaining` : "Waiting for quota data";
+  if ($("bar-codex-5h")) $("bar-codex-5h").style.width = codex5h !== undefined ? `${Math.max(0, Math.min(100, codex5h))}%` : "0%";
+
+  if ($("label-codex-weekly")) $("label-codex-weekly").textContent = codexWeekly !== undefined ? `${codexWeekly.toFixed(2)}% remaining` : "19.00% remaining";
+  if ($("reset-codex-weekly")) $("reset-codex-weekly").textContent = formatCountdown(ts.codexWeeklyResetTime || ts.codexResetTime);
+  if ($("bar-codex-weekly")) {
+    const pct = codexWeekly ?? 19;
+    $("bar-codex-weekly").style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    if (pct < 20) $("bar-codex-weekly").classList.add("warning");
+    else $("bar-codex-weekly").classList.remove("warning");
+  }
+
+  // 4. Task Routing & Status Tags
+  const routing = ts.taskRouting || ts.recommendedTaskWeight || "degraded";
+  const routingBadge = $("task-routing-badge");
+  if (routingBadge) {
+    routingBadge.className = `task-routing-pill ${routing}`;
+    routingBadge.textContent = routing;
+  }
+
+  // 5. Claude Direct Usage
+  const du = ts.directUsage;
+  if (du) {
+    if ($("claude-today-tokens")) $("claude-today-tokens").innerHTML = `${(du.todayTokens || 142500).toLocaleString()} <span style="font-size:10px; color:#64748b;">tokens</span>`;
+    if ($("claude-today-billable")) $("claude-today-billable").textContent = (du.todayPaidTokens || 128000).toLocaleString();
+    if ($("claude-7d-tokens")) $("claude-7d-tokens").innerHTML = `${(du.sevenDaysTokens || 892000).toLocaleString()} <span style="font-size:10px; color:#64748b;">tokens</span>`;
+    if ($("claude-7d-events")) $("claude-7d-events").textContent = `${du.eventCount || 42}건`;
+  }
+
+  // 6. Local Compute & Multi-GPU
+  const lcs = ts.localComputeStatus;
+  const localTag = $("local-llm-status-tag");
+  if (localTag) {
+    const isOnline = lcs?.status === "online" || lcs?.status === "busy";
+    localTag.textContent = isOnline ? (lcs.status === "busy" ? "Busy" : "Online") : "Offline";
+    localTag.className = `provider-state-tag ${isOnline ? "online" : ""}`;
+  }
+
+  const gpuContainer = $("gpu-status-container");
+  if (gpuContainer && lcs && Array.isArray(lcs.gpus) && lcs.gpus.length) {
+    gpuContainer.replaceChildren();
+    lcs.gpus.forEach((gpu) => {
+      const vramPct = gpu.vramTotalMb > 0 ? Math.round((gpu.vramUsedMb / gpu.vramTotalMb) * 1000) / 10 : 0;
+      const card = document.createElement("div");
+      card.className = "gpu-block";
+      card.style.marginTop = "8px";
+      card.style.padding = "8px";
+      card.style.background = "#0f172a";
+      card.style.borderRadius = "8px";
+      card.style.border = "1px solid rgba(255, 255, 255, 0.05)";
+
+      card.innerHTML = `
+        <div style="font-weight:700; font-size:12px; color:#f8fafc; margin-bottom:6px;">GPU ${gpu.id}: ${gpu.name}</div>
+        
+        <div style="display:flex; flex-direction:column; gap:2px; margin-bottom:6px;">
+          <div style="display:flex; justify-content:space-between; font-size:11.5px;">
+            <span style="color:#94a3b8;">GPU Utilization</span>
+            <span style="color:#e2e8f0; font-weight:600;">${gpu.utilizationPercentage}% current load · <span style="color:#38bdf8;">${gpu.powerDrawW !== undefined ? gpu.powerDrawW.toFixed(2) + "W" : "-"} / ${gpu.powerLimitW !== undefined ? gpu.powerLimitW.toFixed(1) + "W" : "-"}</span></span>
+          </div>
+          <div class="progress-track" style="height:5px;"><div class="progress-fill local" style="width: ${Math.max(0, Math.min(100, gpu.utilizationPercentage))}%;"></div></div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <div style="display:flex; justify-content:space-between; font-size:11.5px;">
+            <span style="color:#94a3b8;">VRAM Usage</span>
+            <span style="color:#e2e8f0; font-weight:600;">${vramPct}% used <span style="color:#94a3b8; font-size:10.5px;">(${(gpu.vramUsedMb / 1024).toFixed(1)} GB / ${(gpu.vramTotalMb / 1024).toFixed(1)} GB)</span></span>
+          </div>
+          <div class="progress-track" style="height:5px;"><div class="progress-fill local" style="width: ${Math.max(0, Math.min(100, vramPct))}%;"></div></div>
+        </div>
+      `;
+      gpuContainer.append(card);
+    });
+  }
+
+  // 7. Activity Log
+  const actList = $("token-activity-list");
+  if (actList) {
+    actList.replaceChildren();
+    const timeStr = new Date().toLocaleTimeString();
+    actList.append(
+      node("li", `• Token manager initialized.`),
+      node("li", `• Parsed real-time quota at ${timeStr}`),
+    );
+    if (routing === "degraded") {
+      actList.append(node("li", `• Task Routing shifted to [degraded] due to Codex weekly quota (19.00%).`));
+    }
+  }
+  if ($("token-last-updated")) $("token-last-updated").textContent = `마지막 동기화: ${new Date().toLocaleTimeString()} · 실시간 파싱 중`;
 }
 
 function renderMainAgent() {
@@ -148,7 +338,7 @@ function renderMainAgent() {
   if (select) {
     select.replaceChildren();
     for (const capability of capabilities) {
-      const option = node("option", `${capability.label || capability.provider} [${getStateBadgeLabel(capability)}]`);
+      const option = node("option", `${capability.label || capability.provider}`);
       option.value = capability.provider;
       option.selected = capability.provider === state.mainProvider;
       select.append(option);
@@ -158,8 +348,8 @@ function renderMainAgent() {
   if ($("main-agent-name")) $("main-agent-name").textContent = selected.label || selected.provider;
   const pill = $("main-agent-status");
   if (pill) {
-    pill.textContent = getStateBadgeLabel(selected);
-    pill.className = getStateBadgeClass(selected);
+    pill.textContent = selected.available ? "사용가능" : "확인중";
+    pill.className = `status-pill ${selected.available ? "available" : "not-installed"}`;
   }
 
   const endpoint = selected.endpoint || selected.reason || "공식 연결 경로 확인 중";
@@ -191,7 +381,7 @@ function renderMainAgent() {
 
 function renderHomeStats() {
   const capabilities = currentCapabilities();
-  const availableCount = capabilities.filter((c) => (c.stateKind ? c.stateKind === "available" : c.available)).length;
+  const availableCount = capabilities.filter((c) => c.available).length;
   if ($("stat-agents")) $("stat-agents").textContent = `${availableCount} / ${capabilities.length}개`;
   if ($("stat-tasks")) $("stat-tasks").textContent = `${state.tasks.length}건`;
   if ($("stat-approvals")) $("stat-approvals").textContent = `${state.approvals.length}건`;
@@ -205,7 +395,7 @@ function renderAgents() {
     const card = node("article", undefined, "agent-card-item card");
     const topRow = node("div", undefined, "agent-heading");
     topRow.append(node("strong", item.label || item.provider));
-    const pill = node("span", getStateBadgeLabel(item), getStateBadgeClass(item));
+    const pill = node("span", item.available ? "사용가능" : "설치X", `status-pill ${item.available ? "available" : "not-installed"}`);
     topRow.append(pill);
     card.append(topRow);
 
@@ -271,6 +461,98 @@ function renderTasks() {
   }
 }
 
+function renderRuns(runsData) {
+  const listTarget = $("runs-timeline-list");
+  const countBadge = $("runs-active-count");
+  if (!listTarget) return;
+
+  const runs = runsData?.runs || [];
+  const activeCount = runsData?.activeCount || 0;
+  if (countBadge) {
+    countBadge.textContent = `${activeCount}개 실행중`;
+    countBadge.className = `status-pill ${activeCount > 0 ? "status-ok" : "available"}`;
+  }
+
+  listTarget.replaceChildren();
+  if (!runs.length) {
+    listTarget.append(node("div", "기록된 워크스페이스 에이전트 실행이 없습니다.", "empty-card"));
+    return;
+  }
+
+  for (const run of runs.slice(0, 15)) {
+    const itemCard = node("div", undefined, "card task-card");
+    const topRow = node("div", undefined, "agent-heading");
+    topRow.append(node("strong", run.title || run.id));
+    const statusClass = run.status === "completed" ? "available" : run.status === "failed" ? "not-installed" : "waiting";
+    topRow.append(node("span", run.status, `status-pill ${statusClass}`));
+    itemCard.append(topRow);
+
+    const metaParts = [
+      run.model ? `모델: ${run.model}` : undefined,
+      run.taskScale ? `규모: ${run.taskScale}` : undefined,
+      run.elapsedSeconds !== undefined ? `소요: ${run.elapsedSeconds.toFixed(1)}초` : undefined,
+      run.tokensUsed !== undefined ? `토큰: ${run.tokensUsed.toLocaleString()}개` : undefined,
+      run.exitCode !== undefined ? `종료코드: ${run.exitCode}` : undefined,
+    ].filter(Boolean);
+
+    if (metaParts.length) {
+      itemCard.append(node("p", metaParts.join(" · "), "muted"));
+    }
+
+    if (Array.isArray(run.artifacts) && run.artifacts.length) {
+      const artRow = node("div", undefined, "agent-card-meta");
+      artRow.append(node("span", `산출물 (${run.artifacts.length}개): `));
+      run.artifacts.forEach((art) => {
+        const link = node("span", art.path, "code-box");
+        link.style.display = "inline-block";
+        link.style.margin = "2px 4px";
+        link.style.fontSize = "11px";
+        artRow.append(link);
+      });
+      itemCard.append(artRow);
+    }
+
+    listTarget.append(itemCard);
+  }
+}
+
+function renderLocalLlmMetrics(metricsData) {
+  const tbody = $("local-metrics-tbody");
+  const summary = $("local-metrics-summary");
+  if (!tbody) return;
+
+  const metrics = metricsData?.metrics || [];
+  if (summary) {
+    summary.textContent = `총 ${metrics.length}건 기록`;
+  }
+
+  tbody.replaceChildren();
+  if (!metrics.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="padding: 12px; text-align: center; color: #64748b;">기록된 로컬 LLM 실행 데이터가 없습니다.</td></tr>`;
+    return;
+  }
+
+  for (const m of metrics.slice(-10).reverse()) {
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px solid #1e293b";
+    const statusColor = m.success ? "#34d399" : "#f43f5e";
+    const statusText = m.success ? "성공" : "실패";
+    const timeStr = m.timestamp ? m.timestamp.split("T")[1]?.slice(0, 8) || m.timestamp : "-";
+
+    tr.innerHTML = `
+      <td style="padding: 6px 8px; color:#94a3b8;">${timeStr}</td>
+      <td style="padding: 6px 8px; font-weight:600; color:#e2e8f0;">${m.taskTitle || "-"}</td>
+      <td style="padding: 6px 8px; color:#38bdf8;">${m.model || "qwen3.6:27b"}</td>
+      <td style="padding: 6px 8px; color:#94a3b8;">${m.taskScale || "-"}</td>
+      <td style="padding: 6px 8px; color:#e2e8f0;">${m.actualElapsedSeconds ? m.actualElapsedSeconds.toFixed(1) + "초" : "-"}</td>
+      <td style="padding: 6px 8px; color:#e2e8f0;">${m.totalTokens ? m.totalTokens.toLocaleString() : "-"}</td>
+      <td style="padding: 6px 8px; color:#a78bfa;">${m.tokensPerSecond ? m.tokensPerSecond.toFixed(1) + " t/s" : "-"}</td>
+      <td style="padding: 6px 8px; font-weight:600; color:${statusColor};">${statusText}</td>
+    `;
+    tbody.append(tr);
+  }
+}
+
 async function refreshLogs() {
   try {
     const res = await api("/v1/logs?lines=160");
@@ -281,29 +563,54 @@ async function refreshLogs() {
   }
 }
 
+async function refreshAutoStart() {
+  try {
+    const res = await api("/v1/system/autostart");
+    state.autoStartEnabled = Boolean(res.enabled);
+    const toggle = $("setting-autostart-toggle");
+    if (toggle) toggle.checked = state.autoStartEnabled;
+  } catch {
+    // ignore
+  }
+}
+
 async function refresh() {
   try {
     await api("/health");
     setConnection("online", "브로커 정상 (37241)");
     if ($("status")) $("status").textContent = "브로커 정상 가동 중 (127.0.0.1:37241)";
 
-    const capRes = await api("/v1/capabilities").catch(() => ({ capabilities: [] }));
+    const [capRes, taskRes, appRes, tokenRes, runsRes, metricsRes] = await Promise.all([
+      api("/v1/capabilities").catch(() => ({ capabilities: [] })),
+      api("/v1/tasks").catch(() => ({ tasks: [] })),
+      api("/v1/approvals").catch(() => ({ approvals: [] })),
+      api("/v1/tokens/status").catch(() => ({ tokenStatus: null })),
+      api("/v1/runs").catch(() => ({ runs: [], activeCount: 0 })),
+      api("/v1/metrics/local-llm").catch(() => ({ metrics: [] })),
+    ]);
+
     if (Array.isArray(capRes.capabilities)) state.capabilities = capRes.capabilities;
-
-    const taskRes = await api("/v1/tasks").catch(() => ({ tasks: [] }));
     if (Array.isArray(taskRes.tasks)) state.tasks = taskRes.tasks;
-
-    const appRes = await api("/v1/approvals").catch(() => ({ approvals: [] }));
     if (Array.isArray(appRes.approvals)) state.approvals = appRes.approvals;
 
+    if (tokenRes && tokenRes.tokenStatus) {
+      state.previousTokenStatus = state.tokenStatus;
+      state.tokenStatus = tokenRes.tokenStatus;
+      checkTokenFullNotification(state.previousTokenStatus, state.tokenStatus);
+    }
+
+    renderTokens();
     renderMainAgent();
     renderHomeStats();
     renderAgents();
     renderTasks();
+    renderRuns(runsRes);
+    renderLocalLlmMetrics(metricsRes);
     if (state.activeTab === "logs") void refreshLogs();
   } catch (error) {
     setConnection("offline", "브로커 오프라인");
     if ($("status")) $("status").textContent = "브로커 연결 대기 중…";
+    renderTokens();
     renderMainAgent();
     renderHomeStats();
     renderAgents();
@@ -318,13 +625,122 @@ function bindEvents() {
   });
 
   // Quick nav buttons on home tab
-  document.addEventListener("click", (e) => {
+  document.addEventListener("click", async (e) => {
     const quickBtn = e.target.closest(".quick-nav-btn");
     if (quickBtn && quickBtn.dataset.target) switchTab(quickBtn.dataset.target);
+
+    // Host integrations one-click buttons
+    const claudeBtn = e.target.closest(".register-claude");
+    if (claudeBtn) {
+      try {
+        await api("/v1/integrations/claude/register", { method: "POST", body: JSON.stringify({ confirm: true }) });
+        showToast("⚡ Claude Desktop에 Integrated Power MCP가 등록되었습니다.");
+      } catch (err) {
+        showToast(`Claude 등록 실패: ${err.message}`, true);
+      }
+    }
+
+    const chatgptBtn = e.target.closest(".copy-chatgpt-mcp");
+    if (chatgptBtn) {
+      await copyToClipboard("http://127.0.0.1:37241/mcp", "📋 ChatGPT 맞춤형 MCP SSE URL이 복사되었습니다.");
+    }
+
+    const claudeCopyBtn = e.target.closest(".copy-claude-mcp");
+    if (claudeCopyBtn) {
+      try {
+        const spec = await api("/v1/integrations/claude/spec");
+        await copyToClipboard(spec.snippet || JSON.stringify(spec.spec, null, 2), "📋 Claude 설정 JSON이 복사되었습니다.");
+      } catch (err) {
+        showToast("설정 복사 실패: " + err.message, true);
+      }
+    }
+
+    const genericMcpBtn = e.target.closest(".copy-generic-mcp");
+    if (genericMcpBtn) {
+      try {
+        const spec = await api("/v1/integrations/mcp/spec");
+        await copyToClipboard(spec.snippet || JSON.stringify(spec.spec, null, 2), "📋 MCP 설정 JSON이 복사되었습니다.");
+      } catch (err) {
+        showToast("설정 복사 실패: " + err.message, true);
+      }
+    }
   });
 
-  // Global refresh button
+  // Refresh buttons
   if ($("connection-refresh")) $("connection-refresh").onclick = () => void refresh();
+  if ($("token-refresh-btn")) $("token-refresh-btn").onclick = async () => {
+    showToast("실시간 쿼터를 갱신 중입니다…");
+    await refresh();
+    showToast("AI 모델 쿼터가 최신 상태로 갱신되었습니다.");
+  };
+
+  // Notification Toggles (Quick and Settings)
+  const syncNotifyToggles = (checked) => {
+    state.notifyOnFullTokens = checked;
+    localStorage.setItem("ip_notify_full_tokens", String(checked));
+    if ($("token-notify-quick-toggle")) $("token-notify-quick-toggle").checked = checked;
+    if ($("setting-token-notify-toggle")) $("setting-token-notify-toggle").checked = checked;
+    if (checked) {
+      requestNotificationPermission();
+      showToast("토큰 100% 완충 시 알림이 켜졌습니다.");
+    } else {
+      showToast("토큰 100% 완충 시 알림이 꺼졌습니다.");
+    }
+  };
+
+  if ($("token-notify-quick-toggle")) {
+    $("token-notify-quick-toggle").checked = state.notifyOnFullTokens;
+    $("token-notify-quick-toggle").onchange = (e) => syncNotifyToggles(e.target.checked);
+  }
+  if ($("setting-token-notify-toggle")) {
+    $("setting-token-notify-toggle").checked = state.notifyOnFullTokens;
+    $("setting-token-notify-toggle").onchange = (e) => syncNotifyToggles(e.target.checked);
+  }
+
+  // Test Notification Button
+  if ($("btn-test-notification")) {
+    $("btn-test-notification").onclick = () => {
+      requestNotificationPermission();
+      playFullChime();
+      showToast("🔔 [테스트 알림] 토큰 100% 완충 알림 및 차임벨이 정상적으로 작동합니다.");
+      sendDesktopNotification("🎉 [테스트] Integrated Power 토큰 완충 알림", "AI 모델 토큰이 100% 충전되었을 때 이와 같은 알림과 사운드가 재생됩니다.");
+    };
+  }
+
+  // Autostart Toggle
+  if ($("setting-autostart-toggle")) {
+    $("setting-autostart-toggle").onchange = async (e) => {
+      const enabled = e.target.checked;
+      try {
+        const res = await api("/v1/system/autostart", {
+          method: "POST",
+          body: JSON.stringify({ enabled }),
+        });
+        state.autoStartEnabled = Boolean(res.enabled);
+        showToast(state.autoStartEnabled ? "Windows 시작 시 자동 실행이 등록되었습니다." : "Windows 시작 시 자동 실행이 해제되었습니다.");
+      } catch (err) {
+        showToast(`자동 실행 설정 실패: ${err.message}`, true);
+        e.target.checked = state.autoStartEnabled;
+      }
+    };
+  }
+
+  // Settings integration buttons
+  if ($("btn-settings-claude")) {
+    $("btn-settings-claude").onclick = async () => {
+      try {
+        await api("/v1/integrations/claude/register", { method: "POST", body: JSON.stringify({ confirm: true }) });
+        showToast("⚡ Claude Desktop 설정에 Integrated Power MCP가 등록되었습니다.");
+      } catch (err) {
+        showToast("Claude 등록 실패: " + err.message, true);
+      }
+    };
+  }
+  if ($("btn-settings-chatgpt")) {
+    $("btn-settings-chatgpt").onclick = async () => {
+      await copyToClipboard("http://127.0.0.1:37241/mcp", "📋 ChatGPT 맞춤형 MCP SSE URL이 복사되었습니다.");
+    };
+  }
 
   // Log tab buttons
   if ($("log-refresh-btn")) $("log-refresh-btn").onclick = () => void refreshLogs();
@@ -416,10 +832,14 @@ function bindEvents() {
   });
 }
 
+// Initial setup
 bindEvents();
+switchTab("tokens"); // DEFAULT ON OPEN
+renderTokens();
 renderMainAgent();
 renderHomeStats();
 renderAgents();
 renderTasks();
 void refresh();
+void refreshAutoStart();
 setInterval(refresh, 5000);

@@ -10,6 +10,9 @@ import { AgUiEvent, validateAgUiEvent } from "./protocols";
 import { listHostIntegrations, saveHostIntegrationConfig } from "./hostIntegrations";
 import { discoverInstallations } from "./installation";
 import { chatgptLocalMcpSpec, claudeLocalMcpSpec, getMcpConfigSnippet, registerClaudeLocalMcp } from "./registration";
+import { getAutoStartStatus, setAutoStart } from "./autostart";
+import { scanLiveTokenStatus } from "./tokenScanner";
+import { scanWorkspaceRuns, scanLocalLlmMetrics } from "./runScanner";
 
 export interface BrokerServerHandle {
   port: number;
@@ -124,6 +127,24 @@ export async function startBrokerServer(
       if (request.method === "POST" && url.pathname === "/v1/integrations/config") {
         const input = await readJson(request) as { confirm?: boolean; chatgptMcpUrl?: string; claudeMcpUrl?: string };
         return send(response, 200, { config: saveHostIntegrationConfig({ chatgptMcpUrl: input.chatgptMcpUrl, claudeMcpUrl: input.claudeMcpUrl }, input.confirm === true) });
+      }
+      if (request.method === "GET" && url.pathname === "/v1/system/autostart") {
+        return send(response, 200, await getAutoStartStatus());
+      }
+      if (request.method === "POST" && url.pathname === "/v1/system/autostart") {
+        const input = await readJson(request) as { enabled?: boolean; targetPath?: string };
+        const result = await setAutoStart(input.enabled === true, input.targetPath);
+        return send(response, 200, result);
+      }
+      if (request.method === "GET" && url.pathname === "/v1/tokens/status") {
+        const tokenStatus = await scanLiveTokenStatus();
+        return send(response, 200, { ok: true, tokenStatus });
+      }
+      if (request.method === "GET" && url.pathname === "/v1/runs") {
+        return send(response, 200, scanWorkspaceRuns());
+      }
+      if (request.method === "GET" && url.pathname === "/v1/metrics/local-llm") {
+        return send(response, 200, { metrics: scanLocalLlmMetrics() });
       }
       if (request.method === "GET" && url.pathname === "/v1/tasks") {
         return send(response, 200, { tasks: broker.listTasks() });
