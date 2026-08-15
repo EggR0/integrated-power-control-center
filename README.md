@@ -49,10 +49,15 @@ flowchart TD
 3. **Safe Execution & Worktree Isolation**:
    - Code-writing tasks are executed in isolated Git worktrees.
    - Merging changes to the main branch or external transfers require explicit human approval via the Control Center Approval Queue.
-4. **Standalone & Lightweight**:
+4. **Live Token Status & 100% Full Quota Notification**:
+   - Live quota tracking for **Gemini 3.1 Pro, Claude Opus 4.6 Thinking, and OpenAI Codex** with SVG gauge rings and reset countdowns.
+   - Desktop and in-app notifications dispatched the moment token quotas refill to 100%.
+5. **Standalone & Lightweight Desktop App (Tauri 2)**:
    - Runs independently as a native desktop application with Tauri 2 and an embedded Node runtime bundle (`node-runtime.exe`). No IDE installation required.
-5. **Encrypted Local Ledger**:
+   - Optional Windows boot auto-start (`HKCU\...\Run`) with a single toggle.
+6. **Encrypted Local Ledger & 32k Context**:
    - Task histories and telemetry are stored in an encrypted local ledger (SQLCipher / DPAPI / OS Keyring). Never uploads private conversations or GUI credentials to third-party clouds.
+   - 32k (`32,768`) token local context pre-allocation for high-end GPUs and Apple Silicon.
 
 ---
 
