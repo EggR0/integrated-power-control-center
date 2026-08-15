@@ -194,13 +194,14 @@ function switchTab(targetTab) {
 }
 
 function formatCountdown(resetTimeStr) {
-  if (!resetTimeStr) return "· 5h rolling window";
+  if (!resetTimeStr) return "";
   const target = Date.parse(resetTimeStr);
   if (Number.isNaN(target)) return `· ${resetTimeStr}`;
   const diffMs = target - Date.now();
   if (diffMs <= 0) return "· Refreshes soon (100%)";
-  const totalHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
   if (totalHours >= 48) {
     const days = Math.floor(totalHours / 24);
     const remHours = totalHours % 24;
@@ -221,31 +222,32 @@ function renderTokens() {
   // 1. Antigravity IDE - Gemini 3.1 Pro
   if ($("label-gemini-5h")) $("label-gemini-5h").textContent = agy5h !== undefined ? `${agy5h.toFixed(2)}% remaining` : "Waiting for quota";
   if ($("reset-gemini-5h")) $("reset-gemini-5h").textContent = formatCountdown(ts.antigravityResetTime);
-  if ($("bar-gemini-5h")) $("bar-gemini-5h").style.width = `${Math.max(0, Math.min(100, agy5h ?? 100))}%`;
+  if ($("bar-gemini-5h")) $("bar-gemini-5h").style.width = `${Math.max(0, Math.min(100, agy5h ?? 0))}%`;
 
   if ($("label-gemini-weekly")) $("label-gemini-weekly").textContent = agyWeekly !== undefined ? `${agyWeekly.toFixed(2)}% remaining` : "Waiting for quota";
   if ($("reset-gemini-weekly")) $("reset-gemini-weekly").textContent = formatCountdown(ts.antigravityWeeklyResetTime);
-  if ($("bar-gemini-weekly")) $("bar-gemini-weekly").style.width = `${Math.max(0, Math.min(100, agyWeekly ?? 100))}%`;
+  if ($("bar-gemini-weekly")) $("bar-gemini-weekly").style.width = `${Math.max(0, Math.min(100, agyWeekly ?? 0))}%`;
 
   // 2. Antigravity IDE - Opus 4.6 Thinking
   if ($("label-opus-5h")) $("label-opus-5h").textContent = opus5h !== undefined ? `${opus5h.toFixed(2)}% remaining` : "Waiting for quota";
   if ($("reset-opus-5h")) $("reset-opus-5h").textContent = formatCountdown(ts.opusResetTime);
-  if ($("bar-opus-5h")) $("bar-opus-5h").style.width = `${Math.max(0, Math.min(100, opus5h ?? 100))}%`;
+  if ($("bar-opus-5h")) $("bar-opus-5h").style.width = `${Math.max(0, Math.min(100, opus5h ?? 0))}%`;
 
   if ($("label-opus-weekly")) $("label-opus-weekly").textContent = opusWeekly !== undefined ? `${opusWeekly.toFixed(2)}% remaining` : "Waiting for quota";
   if ($("reset-opus-weekly")) $("reset-opus-weekly").textContent = formatCountdown(ts.opusWeeklyResetTime);
-  if ($("bar-opus-weekly")) $("bar-opus-weekly").style.width = `${Math.max(0, Math.min(100, opusWeekly ?? 100))}%`;
+  if ($("bar-opus-weekly")) $("bar-opus-weekly").style.width = `${Math.max(0, Math.min(100, opusWeekly ?? 0))}%`;
 
   // 3. Codex - ChatGPT
   if ($("label-codex-5h")) $("label-codex-5h").textContent = codex5h !== undefined ? `${codex5h.toFixed(2)}% remaining` : "Waiting for quota data";
+  if ($("reset-codex-5h")) $("reset-codex-5h").textContent = formatCountdown(ts.codexResetTime);
   if ($("bar-codex-5h")) $("bar-codex-5h").style.width = codex5h !== undefined ? `${Math.max(0, Math.min(100, codex5h))}%` : "0%";
 
-  if ($("label-codex-weekly")) $("label-codex-weekly").textContent = codexWeekly !== undefined ? `${codexWeekly.toFixed(2)}% remaining` : "19.00% remaining";
-  if ($("reset-codex-weekly")) $("reset-codex-weekly").textContent = formatCountdown(ts.codexWeeklyResetTime || ts.codexResetTime);
+  if ($("label-codex-weekly")) $("label-codex-weekly").textContent = codexWeekly !== undefined ? `${codexWeekly.toFixed(2)}% remaining` : "Waiting for quota data";
+  if ($("reset-codex-weekly")) $("reset-codex-weekly").textContent = formatCountdown(ts.codexWeeklyResetTime);
   if ($("bar-codex-weekly")) {
-    const pct = codexWeekly ?? 19;
-    $("bar-codex-weekly").style.width = `${Math.max(0, Math.min(100, pct))}%`;
-    if (pct < 20) $("bar-codex-weekly").classList.add("warning");
+    const pct = codexWeekly ?? 0;
+    $("bar-codex-weekly").style.width = codexWeekly !== undefined ? `${Math.max(0, Math.min(100, pct))}%` : "0%";
+    if (codexWeekly !== undefined && pct < 20) $("bar-codex-weekly").classList.add("warning");
     else $("bar-codex-weekly").classList.remove("warning");
   }
 
@@ -259,12 +261,24 @@ function renderTokens() {
 
   // 5. Claude Direct Usage
   const du = ts.directUsage;
-  if (du) {
-    if ($("claude-today-tokens")) $("claude-today-tokens").innerHTML = `${(du.todayTokens || 142500).toLocaleString()} <span style="font-size:10px; color:#64748b;">tokens</span>`;
-    if ($("claude-today-billable")) $("claude-today-billable").textContent = (du.todayPaidTokens || 128000).toLocaleString();
-    if ($("claude-7d-tokens")) $("claude-7d-tokens").innerHTML = `${(du.sevenDaysTokens || 892000).toLocaleString()} <span style="font-size:10px; color:#64748b;">tokens</span>`;
-    if ($("claude-7d-events")) $("claude-7d-events").textContent = `${du.eventCount || 42}건`;
+  if ($("claude-today-tokens")) {
+    const el = $("claude-today-tokens");
+    el.replaceChildren();
+    el.append(
+      document.createTextNode(`${(du?.todayTokens ?? 0).toLocaleString()} `),
+      node("span", "tokens", "unit-label")
+    );
   }
+  if ($("claude-today-billable")) $("claude-today-billable").textContent = (du?.todayPaidTokens ?? 0).toLocaleString();
+  if ($("claude-7d-tokens")) {
+    const el = $("claude-7d-tokens");
+    el.replaceChildren();
+    el.append(
+      document.createTextNode(`${(du?.sevenDaysTokens ?? 0).toLocaleString()} `),
+      node("span", "tokens", "unit-label")
+    );
+  }
+  if ($("claude-7d-events")) $("claude-7d-events").textContent = `${du?.eventCount ?? 0}건`;
 
   // 6. Local Compute & Multi-GPU
   const lcs = ts.localComputeStatus;
@@ -288,25 +302,69 @@ function renderTokens() {
       card.style.borderRadius = "8px";
       card.style.border = "1px solid rgba(255, 255, 255, 0.05)";
 
-      card.innerHTML = `
-        <div style="font-weight:700; font-size:12px; color:#f8fafc; margin-bottom:6px;">GPU ${gpu.id}: ${gpu.name}</div>
-        
-        <div style="display:flex; flex-direction:column; gap:2px; margin-bottom:6px;">
-          <div style="display:flex; justify-content:space-between; font-size:11.5px;">
-            <span style="color:#94a3b8;">GPU Utilization</span>
-            <span style="color:#e2e8f0; font-weight:600;">${gpu.utilizationPercentage}% current load · <span style="color:#38bdf8;">${gpu.powerDrawW !== undefined ? gpu.powerDrawW.toFixed(2) + "W" : "-"} / ${gpu.powerLimitW !== undefined ? gpu.powerLimitW.toFixed(1) + "W" : "-"}</span></span>
-          </div>
-          <div class="progress-track" style="height:5px;"><div class="progress-fill local" style="width: ${Math.max(0, Math.min(100, gpu.utilizationPercentage))}%;"></div></div>
-        </div>
+      const title = node("div", `GPU ${gpu.id}: ${gpu.name}`);
+      title.style.fontWeight = "700";
+      title.style.fontSize = "12px";
+      title.style.color = "#f8fafc";
+      title.style.marginBottom = "6px";
+      card.append(title);
 
-        <div style="display:flex; flex-direction:column; gap:2px;">
-          <div style="display:flex; justify-content:space-between; font-size:11.5px;">
-            <span style="color:#94a3b8;">VRAM Usage</span>
-            <span style="color:#e2e8f0; font-weight:600;">${vramPct}% used <span style="color:#94a3b8; font-size:10.5px;">(${(gpu.vramUsedMb / 1024).toFixed(1)} GB / ${(gpu.vramTotalMb / 1024).toFixed(1)} GB)</span></span>
-          </div>
-          <div class="progress-track" style="height:5px;"><div class="progress-fill local" style="width: ${Math.max(0, Math.min(100, vramPct))}%;"></div></div>
-        </div>
-      `;
+      const utilBox = node("div");
+      utilBox.style.display = "flex";
+      utilBox.style.flexDirection = "column";
+      utilBox.style.gap = "2px";
+      utilBox.style.marginBottom = "6px";
+
+      const utilRow = node("div");
+      utilRow.style.display = "flex";
+      utilRow.style.justifyContent = "space-between";
+      utilRow.style.fontSize = "11.5px";
+      const utilLabel = node("span", "GPU Utilization");
+      utilLabel.style.color = "#94a3b8";
+      const utilVal = node("span", `${gpu.utilizationPercentage}% current load · `);
+      utilVal.style.color = "#e2e8f0";
+      utilVal.style.fontWeight = "600";
+      const pwr = node("span", `${gpu.powerDrawW !== undefined ? gpu.powerDrawW.toFixed(2) + "W" : "-"} / ${gpu.powerLimitW !== undefined ? gpu.powerLimitW.toFixed(1) + "W" : "-"}`);
+      pwr.style.color = "#38bdf8";
+      utilVal.append(pwr);
+      utilRow.append(utilLabel, utilVal);
+
+      const utilTrack = node("div", undefined, "progress-track");
+      utilTrack.style.height = "5px";
+      const utilFill = node("div", undefined, "progress-fill local");
+      utilFill.style.width = `${Math.max(0, Math.min(100, gpu.utilizationPercentage))}%`;
+      utilTrack.append(utilFill);
+      utilBox.append(utilRow, utilTrack);
+      card.append(utilBox);
+
+      const vramBox = node("div");
+      vramBox.style.display = "flex";
+      vramBox.style.flexDirection = "column";
+      vramBox.style.gap = "2px";
+
+      const vramRow = node("div");
+      vramRow.style.display = "flex";
+      vramRow.style.justifyContent = "space-between";
+      vramRow.style.fontSize = "11.5px";
+      const vramLabel = node("span", "VRAM Usage");
+      vramLabel.style.color = "#94a3b8";
+      const vramVal = node("span", `${vramPct}% used `);
+      vramVal.style.color = "#e2e8f0";
+      vramVal.style.fontWeight = "600";
+      const vramSub = node("span", `(${(gpu.vramUsedMb / 1024).toFixed(1)} GB / ${(gpu.vramTotalMb / 1024).toFixed(1)} GB)`);
+      vramSub.style.color = "#94a3b8";
+      vramSub.style.fontSize = "10.5px";
+      vramVal.append(vramSub);
+      vramRow.append(vramLabel, vramVal);
+
+      const vramTrack = node("div", undefined, "progress-track");
+      vramTrack.style.height = "5px";
+      const vramFill = node("div", undefined, "progress-fill local");
+      vramFill.style.width = `${Math.max(0, Math.min(100, vramPct))}%`;
+      vramTrack.append(vramFill);
+      vramBox.append(vramRow, vramTrack);
+      card.append(vramBox);
+
       gpuContainer.append(card);
     });
   }
@@ -315,16 +373,15 @@ function renderTokens() {
   const actList = $("token-activity-list");
   if (actList) {
     actList.replaceChildren();
-    const timeStr = new Date().toLocaleTimeString();
-    actList.append(
-      node("li", `• Token manager initialized.`),
-      node("li", `• Parsed real-time quota at ${timeStr}`),
-    );
-    if (routing === "degraded") {
-      actList.append(node("li", `• Task Routing shifted to [degraded] due to Codex weekly quota (19.00%).`));
+    const activities = Array.isArray(ts.activity) && ts.activity.length ? ts.activity : [
+      "Token manager initialized.",
+      `Parsed real-time quota at ${new Date().toLocaleTimeString()}`,
+    ];
+    for (const act of activities) {
+      actList.append(node("li", `• ${act}`));
     }
   }
-  if ($("token-last-updated")) $("token-last-updated").textContent = `마지막 동기화: ${new Date().toLocaleTimeString()} · 실시간 파싱 중`;
+  if ($("token-last-updated")) $("token-last-updated").textContent = `마지막 동기화: ${new Date().toLocaleTimeString()} · 실시간 연동됨`;
 }
 
 function renderMainAgent() {
@@ -528,7 +585,15 @@ function renderLocalLlmMetrics(metricsData) {
 
   tbody.replaceChildren();
   if (!metrics.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="padding: 12px; text-align: center; color: #64748b;">기록된 로컬 LLM 실행 데이터가 없습니다.</td></tr>`;
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 8;
+    td.style.padding = "12px";
+    td.style.textAlign = "center";
+    td.style.color = "#64748b";
+    td.textContent = "기록된 로컬 LLM 실행 데이터가 없습니다.";
+    tr.append(td);
+    tbody.append(tr);
     return;
   }
 
@@ -539,16 +604,49 @@ function renderLocalLlmMetrics(metricsData) {
     const statusText = m.success ? "성공" : "실패";
     const timeStr = m.timestamp ? m.timestamp.split("T")[1]?.slice(0, 8) || m.timestamp : "-";
 
-    tr.innerHTML = `
-      <td style="padding: 6px 8px; color:#94a3b8;">${timeStr}</td>
-      <td style="padding: 6px 8px; font-weight:600; color:#e2e8f0;">${m.taskTitle || "-"}</td>
-      <td style="padding: 6px 8px; color:#38bdf8;">${m.model || "qwen3.6:27b"}</td>
-      <td style="padding: 6px 8px; color:#94a3b8;">${m.taskScale || "-"}</td>
-      <td style="padding: 6px 8px; color:#e2e8f0;">${m.actualElapsedSeconds ? m.actualElapsedSeconds.toFixed(1) + "초" : "-"}</td>
-      <td style="padding: 6px 8px; color:#e2e8f0;">${m.totalTokens ? m.totalTokens.toLocaleString() : "-"}</td>
-      <td style="padding: 6px 8px; color:#a78bfa;">${m.tokensPerSecond ? m.tokensPerSecond.toFixed(1) + " t/s" : "-"}</td>
-      <td style="padding: 6px 8px; font-weight:600; color:${statusColor};">${statusText}</td>
-    `;
+    const tdTime = document.createElement("td");
+    tdTime.style.padding = "6px 8px";
+    tdTime.style.color = "#94a3b8";
+    tdTime.textContent = timeStr;
+
+    const tdTitle = document.createElement("td");
+    tdTitle.style.padding = "6px 8px";
+    tdTitle.style.fontWeight = "600";
+    tdTitle.style.color = "#e2e8f0";
+    tdTitle.textContent = m.taskTitle || "-";
+
+    const tdModel = document.createElement("td");
+    tdModel.style.padding = "6px 8px";
+    tdModel.style.color = "#38bdf8";
+    tdModel.textContent = m.model || "qwen3.6:27b";
+
+    const tdScale = document.createElement("td");
+    tdScale.style.padding = "6px 8px";
+    tdScale.style.color = "#94a3b8";
+    tdScale.textContent = m.taskScale || "-";
+
+    const tdElapsed = document.createElement("td");
+    tdElapsed.style.padding = "6px 8px";
+    tdElapsed.style.color = "#e2e8f0";
+    tdElapsed.textContent = m.actualElapsedSeconds ? `${m.actualElapsedSeconds.toFixed(1)}초` : "-";
+
+    const tdTokens = document.createElement("td");
+    tdTokens.style.padding = "6px 8px";
+    tdTokens.style.color = "#e2e8f0";
+    tdTokens.textContent = m.totalTokens ? m.totalTokens.toLocaleString() : "-";
+
+    const tdSpeed = document.createElement("td");
+    tdSpeed.style.padding = "6px 8px";
+    tdSpeed.style.color = "#a78bfa";
+    tdSpeed.textContent = m.tokensPerSecond ? `${m.tokensPerSecond.toFixed(1)} t/s` : "-";
+
+    const tdStatus = document.createElement("td");
+    tdStatus.style.padding = "6px 8px";
+    tdStatus.style.fontWeight = "600";
+    tdStatus.style.color = statusColor;
+    tdStatus.textContent = statusText;
+
+    tr.append(tdTime, tdTitle, tdModel, tdScale, tdElapsed, tdTokens, tdSpeed, tdStatus);
     tbody.append(tr);
   }
 }

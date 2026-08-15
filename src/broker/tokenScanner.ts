@@ -2,7 +2,7 @@ import * as cp from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { AgyQuotaClient } from "./AgyQuotaClient";
+import * as http from "http";
 
 export interface GpuStatus {
   id: number;
@@ -47,6 +47,7 @@ export interface LiveTokenStatus {
     sevenDaysPaidTokens: number;
     eventCount: number;
   };
+  activity?: string[];
 }
 
 export async function scanGpuMetrics(): Promise<GpuStatus[]> {
@@ -162,7 +163,7 @@ export async function scanCodexQuota(): Promise<{
             return {
               codexPercentage,
               codexResetTime,
-              codexWeeklyPercentage: codexWeeklyPercentage ?? (pInfo?.pct && primary?.window_minutes > 1440 ? pInfo.pct : 19),
+              codexWeeklyPercentage,
               codexWeeklyResetTime,
             };
           }
@@ -174,111 +175,180 @@ export async function scanCodexQuota(): Promise<{
   } catch {
     // ignore
   }
-  return { codexWeeklyPercentage: 19 };
+  return {};
+}
+
+function probeOllama(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get({ host: "127.0.0.1", port: 11434, path: "/api/tags", timeout: 800 }, (res) => {
+      resolve(res.statusCode === 200);
+    });
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => { req.destroy(); resolve(false); });
+  });
+}
+
+function findTokenStatusJsonPath(): string | undefined {
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  const candidates = [
+    path.join(localAppData, "IntegratedPower", "state", "token_status.json"),
+    path.join(os.homedir(), ".config", "integrated-power", "state", "token_status.json"),
+    path.join(localAppData, "EggR", "state", "token_status.json"),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return undefined;
 }
 
 export async function scanLiveTokenStatus(): Promise<LiveTokenStatus> {
-  let antigravityPercentage: number | undefined;
-  let antigravityResetTime: string | undefined;
-  let antigravityWeeklyPercentage: number | undefined;
-  let antigravityWeeklyResetTime: string | undefined;
+  // 1. Primary source of truth: Live token_status.json written by IDE TokenManager
+  const statePath = findTokenStatusJsonPath();
+  if (statePath) {
+    try {
+      const raw = fs.readFileSync(statePath, "utf8");
+      const data = JSON.parse(raw);
+      if (data && typeof data === "object") {
+        let antigravityPercentage: number | undefined;
+        let antigravityResetTime: string | undefined;
+        let antigravityWeeklyPercentage: number | undefined;
+        let antigravityWeeklyResetTime: string | undefined;
 
-  let opusPercentage: number | undefined;
-  let opusResetTime: string | undefined;
-  let opusWeeklyPercentage: number | undefined;
-  let opusWeeklyResetTime: string | undefined;
+        let opusPercentage: number | undefined;
+        let opusResetTime: string | undefined;
+        let opusWeeklyPercentage: number | undefined;
+        let opusWeeklyResetTime: string | undefined;
 
-  // 1. Agy Quota Native Fetch
-  try {
-    const client = new AgyQuotaClient();
-    const result = await client.fetchQuota();
-    if (Array.isArray(result.quota?.groups)) {
-      for (const group of result.quota.groups) {
-        const label = group.displayName || "";
-        if (label.includes("Gemini")) {
-          for (const bucket of group.buckets || []) {
-            const window = bucket.window;
-            const percentage = typeof bucket.remainingFraction === "number" ? Math.round(bucket.remainingFraction * 10000) / 100 : undefined;
-            if (window === "5h") {
-              antigravityPercentage = percentage;
-              antigravityResetTime = bucket.resetTime;
-            } else if (window === "weekly" || window === "7d") {
-              antigravityWeeklyPercentage = percentage;
-              antigravityWeeklyResetTime = bucket.resetTime;
-            }
-          }
-        } else if (label.includes("Claude") || label.includes("Opus") || label.includes("GPT")) {
-          for (const bucket of group.buckets || []) {
-            const window = bucket.window;
-            const percentage = typeof bucket.remainingFraction === "number" ? Math.round(bucket.remainingFraction * 10000) / 100 : undefined;
-            if (window === "5h") {
-              opusPercentage = percentage;
-              opusResetTime = bucket.resetTime;
-            } else if (window === "weekly" || window === "7d") {
-              opusWeeklyPercentage = percentage;
-              opusWeeklyResetTime = bucket.resetTime;
+        let codexPercentage: number | undefined;
+        let codexResetTime: string | undefined;
+        let codexWeeklyPercentage: number | undefined;
+        let codexWeeklyResetTime: string | undefined;
+
+        if (Array.isArray(data.quotaPools)) {
+          for (const pool of data.quotaPools) {
+            if (pool.id === "antigravity.default" || (pool.provider === "antigravity" && !pool.id?.includes("weekly"))) {
+              antigravityPercentage = pool.remainingPercentage;
+              antigravityResetTime = pool.resetTime;
+            } else if (pool.id === "antigravity.weekly" || (pool.provider === "antigravity" && pool.id?.includes("weekly"))) {
+              antigravityWeeklyPercentage = pool.remainingPercentage;
+              antigravityWeeklyResetTime = pool.resetTime;
+            } else if (pool.id === "opus.default" || (pool.provider === "anthropic" && !pool.id?.includes("weekly"))) {
+              opusPercentage = pool.remainingPercentage;
+              opusResetTime = pool.resetTime;
+            } else if (pool.id === "opus.weekly" || (pool.provider === "anthropic" && pool.id?.includes("weekly"))) {
+              opusWeeklyPercentage = pool.remainingPercentage;
+              opusWeeklyResetTime = pool.resetTime;
+            } else if (pool.id === "codex.5h" || (pool.provider === "codex" && !pool.id?.includes("weekly"))) {
+              codexPercentage = pool.remainingPercentage;
+              codexResetTime = pool.resetTime;
+            } else if (pool.id === "codex.weekly" || (pool.provider === "codex" && pool.id?.includes("weekly"))) {
+              codexWeeklyPercentage = pool.remainingPercentage;
+              codexWeeklyResetTime = pool.resetTime;
             }
           }
         }
+
+        // Direct usage
+        const cdu = data.claudeDirectUsage;
+        const directUsage = {
+          todayTokens: cdu?.today?.totalTokens ?? 0,
+          todayPaidTokens: cdu?.today?.billableTokens ?? 0,
+          todayThinkingTokens: cdu?.today?.reasoningOutputTokens ?? 0,
+          sevenDaysTokens: cdu?.sevenDays?.totalTokens ?? 0,
+          sevenDaysPaidTokens: cdu?.sevenDays?.billableTokens ?? 0,
+          eventCount: cdu?.today?.eventCount ?? cdu?.sevenDays?.eventCount ?? 0,
+        };
+
+        // GPUs
+        const gpus: GpuStatus[] = Array.isArray(data.localComputeStatus?.gpus)
+          ? data.localComputeStatus.gpus
+          : await scanGpuMetrics();
+        const vramUsedMb = gpus.reduce((acc, g) => acc + (g.vramUsedMb || 0), 0);
+        const vramTotalMb = gpus.reduce((acc, g) => acc + (g.vramTotalMb || 0), 0);
+
+        // Ollama status
+        const isOnline = data.localComputeStatus?.endpointHealth === "ok" || (await probeOllama());
+        const isBusy = gpus.some((g) => g.utilizationPercentage > 20);
+
+        let taskRouting: "normal" | "degraded" | "critical" = "normal";
+        if (data.recommendedTaskWeight === "degraded" || data.recommendedTaskWeight === "restricted") {
+          taskRouting = "degraded";
+        } else if ((codexWeeklyPercentage !== undefined && codexWeeklyPercentage < 20) || (antigravityPercentage !== undefined && antigravityPercentage < 20)) {
+          taskRouting = "degraded";
+        }
+
+        return {
+          antigravityPercentage,
+          antigravityResetTime,
+          antigravityWeeklyPercentage,
+          antigravityWeeklyResetTime,
+          opusPercentage,
+          opusResetTime,
+          opusWeeklyPercentage,
+          opusWeeklyResetTime,
+          codexPercentage,
+          codexResetTime,
+          codexWeeklyPercentage,
+          codexWeeklyResetTime,
+          taskRouting,
+          lastSync: new Date().toISOString(),
+          localComputeStatus: {
+            status: isOnline ? (isBusy ? "busy" : "online") : "offline",
+            modelName: data.localComputeStatus?.loadedModels?.[0] || "qwen3.6:27b",
+            vramUsedMb,
+            vramTotalMb,
+            gpus,
+          },
+          directUsage,
+          activity: Array.isArray(data.activity) ? data.activity : undefined,
+        };
       }
+    } catch {
+      // Fall through to live scanning if file read fails
     }
-  } catch (error) {
-    console.error("[TokenScanner] Error fetching agy quota:", error);
   }
 
-  // Fallbacks if not scanned
-  if (antigravityPercentage === undefined) antigravityPercentage = 88.01;
-  if (antigravityWeeklyPercentage === undefined) antigravityWeeklyPercentage = 95.4;
-  if (opusPercentage === undefined) opusPercentage = 100;
-  if (opusWeeklyPercentage === undefined) opusWeeklyPercentage = 40.69;
-
-  // 2. Codex Quota
-  const codex = await scanCodexQuota();
-
-  // 3. GPU Metrics
+  // 2. Fallback: Standalone live scanning when IDE state is not present
   const gpus = await scanGpuMetrics();
-  const vramUsedMb = gpus.reduce((acc, g) => acc + g.vramUsedMb, 0);
-  const vramTotalMb = gpus.reduce((acc, g) => acc + g.vramTotalMb, 0);
-
-  // 4. Task Routing Degradation Logic
-  let taskRouting: "normal" | "degraded" | "critical" = "normal";
-  const codexWeekly = codex.codexWeeklyPercentage ?? 100;
-  if (codexWeekly < 20 || (antigravityPercentage !== undefined && antigravityPercentage < 20) || (opusWeeklyPercentage !== undefined && opusWeeklyPercentage < 50)) {
-    taskRouting = "degraded";
-  }
-  if ((antigravityPercentage !== undefined && antigravityPercentage < 10) && (opusPercentage !== undefined && opusPercentage < 10)) {
-    taskRouting = "critical";
-  }
+  const vramUsedMb = gpus.reduce((acc, g) => acc + (g.vramUsedMb || 0), 0);
+  const vramTotalMb = gpus.reduce((acc, g) => acc + (g.vramTotalMb || 0), 0);
+  const codex = await scanCodexQuota();
+  const isOnline = await probeOllama();
+  const isBusy = gpus.some((g) => g.utilizationPercentage > 20);
 
   return {
-    antigravityPercentage,
-    antigravityResetTime,
-    antigravityWeeklyPercentage,
-    antigravityWeeklyResetTime,
-    opusPercentage,
-    opusResetTime,
-    opusWeeklyPercentage,
-    opusWeeklyResetTime,
+    antigravityPercentage: undefined,
+    antigravityResetTime: undefined,
+    antigravityWeeklyPercentage: undefined,
+    antigravityWeeklyResetTime: undefined,
+    opusPercentage: undefined,
+    opusResetTime: undefined,
+    opusWeeklyPercentage: undefined,
+    opusWeeklyResetTime: undefined,
     codexPercentage: codex.codexPercentage,
     codexResetTime: codex.codexResetTime,
-    codexWeeklyPercentage: codex.codexWeeklyPercentage ?? 19,
+    codexWeeklyPercentage: codex.codexWeeklyPercentage,
     codexWeeklyResetTime: codex.codexWeeklyResetTime,
-    taskRouting,
+    taskRouting: (codex.codexWeeklyPercentage !== undefined && codex.codexWeeklyPercentage < 20) ? "degraded" : "normal",
     lastSync: new Date().toISOString(),
     localComputeStatus: {
-      status: gpus.some((g) => g.utilizationPercentage > 5) ? "busy" : "offline",
+      status: isOnline ? (isBusy ? "busy" : "online") : "offline",
       modelName: "qwen3.6:27b",
       vramUsedMb,
       vramTotalMb,
       gpus,
     },
     directUsage: {
-      todayTokens: 142500,
-      todayPaidTokens: 128000,
-      todayThinkingTokens: 14500,
-      sevenDaysTokens: 892000,
-      sevenDaysPaidTokens: 810000,
-      eventCount: 42,
+      todayTokens: 0,
+      todayPaidTokens: 0,
+      todayThinkingTokens: 0,
+      sevenDaysTokens: 0,
+      sevenDaysPaidTokens: 0,
+      eventCount: 0,
     },
+    activity: [
+      "Broker token scanner active.",
+      `Live scan at ${new Date().toLocaleTimeString()}`,
+    ],
   };
 }
