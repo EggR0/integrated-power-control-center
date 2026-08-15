@@ -57,7 +57,7 @@ flowchart TD
    - Optional Windows boot auto-start (`HKCU\...\Run`) with a single toggle.
 6. **Encrypted Local Ledger & 32k Context**:
    - Task histories and telemetry are stored in an encrypted local ledger (SQLCipher / DPAPI / OS Keyring). Never uploads private conversations or GUI credentials to third-party clouds.
-   - 32k (`32,768`) token local context pre-allocation for high-end GPUs and Apple Silicon.
+   - 32k (`32,768`) token local context pre-allocation for high-VRAM GPU environments.
 
 ---
 
