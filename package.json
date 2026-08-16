@@ -1,7 +1,7 @@
 {
   "name": "integrated-power-control-center",
   "displayName": "Integrated Power Control Center & Multi-AI Broker",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Universal Standalone Multi-AI Loopback Broker and Desktop Control Center for ChatGPT, Claude, Antigravity, Local LLMs (Ollama/Qwen), and Codex.",
   "author": "EggR",
   "license": "Apache-2.0",
