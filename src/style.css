@@ -299,8 +299,18 @@ textarea { min-height: 56px; resize: vertical; }
    ======================================================== */
 .token-providers-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+}
+@media (max-width: 1280px) {
+  .token-providers-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 768px) {
+  .token-providers-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .provider-card {
@@ -324,8 +334,25 @@ textarea { min-height: 56px; resize: vertical; }
   border-radius: 14px 14px 0 0;
 }
 .provider-card#provider-antigravity::before { background: linear-gradient(90deg, #38bdf8, #818cf8); }
-.provider-card#provider-codex::before { background: linear-gradient(90deg, #34d399, #10b981); }
+.provider-card#provider-openai::before { background: linear-gradient(90deg, #10a37f, #34d399); }
+.provider-card#provider-claude::before { background: linear-gradient(90deg, #d97706, #f59e0b); }
 .provider-card#provider-local::before { background: linear-gradient(90deg, #c084fc, #6366f1); }
+
+.subscription-pool-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(16, 163, 127, 0.1);
+  border: 1px solid rgba(16, 163, 127, 0.25);
+  border-radius: 6px;
+  font-size: 11px;
+  color: #a7f3d0;
+  margin-bottom: 4px;
+}
+.subscription-pool-banner .pool-icon {
+  font-size: 12px;
+}
 
 .provider-header {
   display: flex;

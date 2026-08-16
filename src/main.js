@@ -11,6 +11,7 @@ const state = {
   previousTokenStatus: null,
   lastFullNotified: false,
   notifyOnFullTokens: localStorage.getItem("ip_notify_full_tokens") !== "false",
+  pollInterval: Number(localStorage.getItem("ip_poll_interval")) || 5000,
   autoStartEnabled: false,
   logs: { path: "", lines: [] },
   mainProvider: "google.antigravity.ide",
@@ -237,7 +238,7 @@ function renderTokens() {
   if ($("reset-opus-weekly")) $("reset-opus-weekly").textContent = formatCountdown(ts.opusWeeklyResetTime);
   if ($("bar-opus-weekly")) $("bar-opus-weekly").style.width = `${Math.max(0, Math.min(100, opusWeekly ?? 0))}%`;
 
-  // 3. Codex - ChatGPT
+  // 3. OpenAI (ChatGPT + Codex)
   if ($("label-codex-5h")) $("label-codex-5h").textContent = codex5h !== undefined ? `${codex5h.toFixed(2)}% remaining` : "Waiting for quota data";
   if ($("reset-codex-5h")) $("reset-codex-5h").textContent = formatCountdown(ts.codexResetTime);
   if ($("bar-codex-5h")) $("bar-codex-5h").style.width = codex5h !== undefined ? `${Math.max(0, Math.min(100, codex5h))}%` : "0%";
@@ -251,6 +252,12 @@ function renderTokens() {
     else $("bar-codex-weekly").classList.remove("warning");
   }
 
+  const codexTag = $("codex-status-tag");
+  if (codexTag) {
+    codexTag.textContent = ts.codexState || "Idle";
+    codexTag.className = `provider-state-tag ${ts.codexState === "working" ? "online" : ""}`;
+  }
+
   // 4. Task Routing & Status Tags
   const routing = ts.taskRouting || ts.recommendedTaskWeight || "degraded";
   const routingBadge = $("task-routing-badge");
@@ -259,26 +266,56 @@ function renderTokens() {
     routingBadge.textContent = routing;
   }
 
-  // 5. Claude Direct Usage
-  const du = ts.directUsage;
+  // 5. Anthropic Claude Direct Usage
+  const du = ts.claudeDirectUsage || ts.directUsage;
+  const hasClaudeData = du && ((du.sevenDaysTokens > 0) || (du.eventCount > 0) || (du.status === "measured") || (du.sevenDays?.eventCount > 0));
+  
+  const claudeTag = $("claude-status-tag");
+  if (claudeTag) {
+    claudeTag.textContent = hasClaudeData ? "Measured" : "No data";
+    claudeTag.className = `provider-state-tag ${hasClaudeData ? "online" : ""}`;
+  }
+
+  const todayTok = du?.todayTokens ?? du?.today?.totalTokens ?? 0;
+  const todayBillable = du?.todayPaidTokens ?? du?.today?.outputTokens ?? 0;
+  const sevenDayTok = du?.sevenDaysTokens ?? du?.sevenDays?.totalTokens ?? 0;
+  const sevenDayEvents = du?.eventCount ?? du?.sevenDays?.eventCount ?? 0;
+
   if ($("claude-today-tokens")) {
     const el = $("claude-today-tokens");
     el.replaceChildren();
     el.append(
-      document.createTextNode(`${(du?.todayTokens ?? 0).toLocaleString()} `),
+      document.createTextNode(`${todayTok.toLocaleString()} `),
       node("span", "tokens", "unit-label")
     );
   }
-  if ($("claude-today-billable")) $("claude-today-billable").textContent = (du?.todayPaidTokens ?? 0).toLocaleString();
+  if ($("claude-today-billable")) $("claude-today-billable").textContent = todayBillable.toLocaleString();
   if ($("claude-7d-tokens")) {
     const el = $("claude-7d-tokens");
     el.replaceChildren();
     el.append(
-      document.createTextNode(`${(du?.sevenDaysTokens ?? 0).toLocaleString()} `),
+      document.createTextNode(`${sevenDayTok.toLocaleString()} `),
       node("span", "tokens", "unit-label")
     );
   }
-  if ($("claude-7d-events")) $("claude-7d-events").textContent = `${du?.eventCount ?? 0}건`;
+  if ($("claude-7d-events")) $("claude-7d-events").textContent = `${sevenDayEvents}건`;
+
+  const sourcesList = Array.isArray(du?.sources) && du.sources.length ? du.sources.join(", ") : "No Claude API, CLI, or Cowork events found";
+  if ($("claude-sources-text")) $("claude-sources-text").textContent = sourcesList;
+
+  const lastUsedStr = du?.lastUsedAt || du?.lastMeasuredAt;
+  if ($("claude-last-used")) {
+    if (lastUsedStr) {
+      try {
+        const d = new Date(lastUsedStr);
+        $("claude-last-used").textContent = Number.isNaN(d.getTime()) ? lastUsedStr : d.toLocaleTimeString();
+      } catch {
+        $("claude-last-used").textContent = lastUsedStr;
+      }
+    } else {
+      $("claude-last-used").textContent = "Waiting for data";
+    }
+  }
 
   // 6. Local Compute & Multi-GPU
   const lcs = ts.localComputeStatus;
@@ -823,6 +860,16 @@ function bindEvents() {
     };
   }
 
+  // Poll Interval Selector
+  const pollSelect = $("setting-poll-interval-select");
+  if (pollSelect) {
+    pollSelect.value = String(state.pollInterval);
+    pollSelect.onchange = (e) => {
+      const newInterval = Number(e.target.value) || 5000;
+      setPollInterval(newInterval);
+    };
+  }
+
   // Settings integration buttons
   if ($("btn-settings-claude")) {
     $("btn-settings-claude").onclick = async () => {
@@ -831,6 +878,16 @@ function bindEvents() {
         showToast("⚡ Claude Desktop 설정에 Integrated Power MCP가 등록되었습니다.");
       } catch (err) {
         showToast("Claude 등록 실패: " + err.message, true);
+      }
+    };
+  }
+  if ($("btn-settings-claude-copy")) {
+    $("btn-settings-claude-copy").onclick = async () => {
+      try {
+        const spec = await api("/v1/integrations/claude/spec");
+        await copyToClipboard(spec.snippet || JSON.stringify(spec.spec, null, 2), "📋 Claude 설정 JSON이 복사되었습니다.");
+      } catch (err) {
+        showToast("설정 복사 실패: " + err.message, true);
       }
     };
   }
@@ -930,6 +987,15 @@ function bindEvents() {
   });
 }
 
+let pollTimer = null;
+function setPollInterval(ms) {
+  state.pollInterval = ms;
+  localStorage.setItem("ip_poll_interval", String(ms));
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(refresh, ms);
+  showToast(`데이터 자동 갱신 주기가 ${ms / 1000}초로 설정되었습니다.`);
+}
+
 // Initial setup
 bindEvents();
 switchTab("tokens"); // DEFAULT ON OPEN
@@ -940,4 +1006,5 @@ renderAgents();
 renderTasks();
 void refresh();
 void refreshAutoStart();
-setInterval(refresh, 5000);
+pollTimer = setInterval(refresh, state.pollInterval);
+
