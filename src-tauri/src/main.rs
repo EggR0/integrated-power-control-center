@@ -123,7 +123,7 @@ fn main() {
         .expect("error while running Integrated Power control center");
 }
 
-fn show_and_restore_window<R: tauri::Runtime>(_app: &AppHandle<R>, window: &WebviewWindow<R>) {
+fn show_and_restore_window<R: tauri::Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>) {
     let _ = window.center();
     let _ = window.show();
     let _ = window.unminimize();

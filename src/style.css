@@ -59,6 +59,9 @@ button { border: 0; }
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .brand-mark {
   display: grid;
@@ -128,6 +131,7 @@ button { border: 0; }
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
   margin-bottom: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border-subtle);
@@ -299,13 +303,11 @@ textarea { min-height: 56px; resize: vertical; }
    ======================================================== */
 .token-providers-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* auto-fill: 9 providers should not strand an orphan card on a 4th row.
+     Columns shrink from the window width; the 300px floor keeps gauges +
+     countdowns readable instead of squeezing them. */
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
-}
-@media (max-width: 1280px) {
-  .token-providers-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 @media (max-width: 768px) {
   .token-providers-grid {
@@ -392,6 +394,32 @@ textarea { min-height: 56px; resize: vertical; }
   color: #38bdf8;
   border: 1px solid rgba(56, 189, 248, 0.25);
 }
+.provider-state-tag.critical {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.provider-toggle {
+  margin-left: 8px;
+  padding: 2px 9px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.provider-toggle:hover {
+  color: #e2e8f0;
+  border-color: rgba(56, 189, 248, 0.5);
+}
+.provider-toggle.is-off {
+  color: #64748b;
+  border-style: dashed;
+}
 
 .provider-models {
   display: flex;
@@ -439,11 +467,55 @@ textarea { min-height: 56px; resize: vertical; }
 }
 
 .progress-track {
+  position: relative;
   height: 6px;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 999px;
   overflow: hidden;
   margin-top: 2px;
+}
+/* External provider model chips (discovered via /v1/models or /api/tags). */
+.external-models {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  margin-top: 8px;
+}
+.external-models-count {
+  font-size: 10.5px;
+  color: var(--text-muted, #94a3b8);
+  margin-right: 2px;
+}
+.model-chip {
+  font-size: 10.5px;
+  line-height: 1.4;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: #cbd5e1;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-chip-default {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.5);
+  color: #ddd6fe;
+}
+.model-chip-more {
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-muted, #94a3b8);
+}
+/* Gauge ticks: N semi-transparent dividers inside the bar (5 segments for the
+   5h window, 7 for weekly). Toggled in settings (ip_gauge_ticks). */
+.progress-ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 .progress-fill {
   height: 100%;
@@ -455,6 +527,63 @@ textarea { min-height: 56px; resize: vertical; }
 .progress-fill.codex { background: linear-gradient(90deg, #34d399, #10b981); box-shadow: 0 0 8px rgba(52, 211, 153, 0.5); }
 .progress-fill.codex.warning { background: linear-gradient(90deg, #fbbf24, #f59e0b); box-shadow: 0 0 8px rgba(251, 191, 36, 0.5); }
 .progress-fill.local { background: linear-gradient(90deg, #6366f1, #a855f7); box-shadow: 0 0 8px rgba(99, 102, 241, 0.5); }
+
+/* P3 unified tone (<=15% critical, 15-35% warning) — shared capacityTone drives
+   the class toggle on every window's bar, not just the old codex-only rule. */
+.progress-fill.warning { background: linear-gradient(90deg, #fbbf24, #f59e0b); box-shadow: 0 0 8px rgba(251, 191, 36, 0.5); }
+.progress-fill.critical { background: linear-gradient(90deg, #f87171, #ef4444); box-shadow: 0 0 8px rgba(239, 68, 68, 0.55); }
+
+/* External (user-registered) provider cards — DOM-built at runtime. */
+.progress-fill.external { background: linear-gradient(90deg, #22d3ee, #0ea5e9); box-shadow: 0 0 8px rgba(34, 211, 238, 0.5); }
+.provider-card-external::before { background: linear-gradient(90deg, #22d3ee, #0ea5e9); }
+.external-providers-empty {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 12px;
+  border-style: dashed;
+  cursor: pointer;
+}
+.external-providers-empty:hover { color: #e2e8f0; border-color: #38bdf8; }
+.provider-toggle-delete { color: #f87171; }
+.provider-toggle-delete:hover { color: #ef4444; }
+
+/* A4: absolute tokens (left / max or the EstimatedAbsolute fallback). Empty
+   (collapsed) when there is no absolute data, so no fake "0" is ever shown. */
+.window-tokens {
+  margin: 3px 0 0;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-height: 0;
+}
+.window-tokens:empty { display: none; }
+
+/* A5: Best / Lowest summary across the six windows (shared selection). */
+.token-capacity-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.token-capacity-summary .summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+  padding: 2px 10px;
+  color: #e2e8f0;
+  background: rgba(148, 163, 184, 0.08);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.token-capacity-summary .summary-pill.summary-warning { border-color: rgba(251, 191, 36, 0.45); color: #fbbf24; background: rgba(251, 191, 36, 0.1); }
+.token-capacity-summary .summary-pill.summary-critical { border-color: rgba(239, 68, 68, 0.5); color: #f87171; background: rgba(239, 68, 68, 0.12); }
 
 .usage-stat-box {
   background: rgba(10, 15, 26, 0.6);
@@ -579,7 +708,7 @@ input:checked + .slider:before {
 .section-subhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .section-subhead h2 { margin: 0; font-size: 16px; font-weight: 700; }
 .legend-pills { display: flex; gap: 6px; }
-.agent-grid-full { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.agent-grid-full { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
 .agent-card-item { padding: 14px; display: flex; flex-direction: column; justify-content: space-between; min-height: 130px; }
 .agent-card-item strong { font-size: 13px; font-weight: 700; display: block; }
 .agent-card-meta { margin: 6px 0; color: var(--text-secondary); font-size: 11px; line-height: 1.4; }
@@ -636,7 +765,10 @@ input:checked + .slider:before {
 /* ========================================================
    VIEW 6: SETTINGS TAB
    ======================================================== */
-.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* Settings tab: single column, uniform card padding — mobile-style window.
+   The 2-column grid let cards of very different heights sit side by side,
+   which read as random box sizes; one column makes every card full width. */
+.settings-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .settings-card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
 .settings-card.highlight-card {
   grid-column: 1 / -1;

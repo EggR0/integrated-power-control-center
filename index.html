@@ -32,7 +32,7 @@
             <span class="nav-icon">⚙</span><span>설정</span>
           </button>
         </nav>
-        <div class="sidebar-footer">v0.8.0 · loopback 37241</div>
+        <div class="sidebar-footer" id="broker-footer">v0.9.2 · loopback 37241</div>
       </aside>
 
       <main id="main-view" class="content">
@@ -59,6 +59,7 @@
               <div>
                 <h2>AI 모델 실시간 쿼터 & 토큰 상태</h2>
                 <p id="token-last-updated" class="muted">동기화 대기 중…</p>
+                <div id="token-capacity-summary" class="token-capacity-summary" style="display: none;"></div>
               </div>
             </div>
             <div class="banner-right">
@@ -74,6 +75,7 @@
                 </label>
               </div>
               <button id="token-refresh-btn" class="button primary">↻ 쿼터 즉시 새로고침</button>
+              <button id="provider-visibility-reset" class="button" title="숨긴 제공자 블록을 모두 다시 표시">모두 표시</button>
             </div>
           </div>
 
@@ -84,12 +86,13 @@
               <div class="provider-header">
                 <span class="provider-pill">Antigravity IDE</span>
                 <span class="provider-state-tag">Idle</span>
+                <button class="provider-toggle" data-provider="antigravity" title="이 블록 표시/숨김">숨기기</button>
               </div>
               <div class="provider-models">
-                <!-- Gemini 3.1 Pro -->
+                <!-- Gemini -->
                 <div class="model-block">
                   <div class="model-name-row">
-                    <h4>Gemini 3.1 Pro</h4>
+                    <h4>Gemini</h4>
                   </div>
                   <div class="quota-window-row">
                     <div class="window-info">
@@ -98,6 +101,7 @@
                     </div>
                     <p id="reset-gemini-5h" class="window-countdown">· Waiting for quota</p>
                     <div class="progress-track"><div id="bar-gemini-5h" class="progress-fill gemini" style="width: 0%;"></div></div>
+                    <p id="tokens-gemini-5h" class="window-tokens"></p>
                   </div>
                   <div class="quota-window-row">
                     <div class="window-info">
@@ -106,13 +110,14 @@
                     </div>
                     <p id="reset-gemini-weekly" class="window-countdown">· Waiting for quota</p>
                     <div class="progress-track"><div id="bar-gemini-weekly" class="progress-fill gemini" style="width: 0%;"></div></div>
+                    <p id="tokens-gemini-weekly" class="window-tokens"></p>
                   </div>
                 </div>
 
-                <!-- Opus 4.6 Thinking -->
+                <!-- Claude -->
                 <div class="model-block" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06);">
                   <div class="model-name-row">
-                    <h4>Opus 4.6 Thinking</h4>
+                    <h4>Claude</h4>
                   </div>
                   <div class="quota-window-row">
                     <div class="window-info">
@@ -121,6 +126,7 @@
                     </div>
                     <p id="reset-opus-5h" class="window-countdown">· Waiting for quota</p>
                     <div class="progress-track"><div id="bar-opus-5h" class="progress-fill opus" style="width: 0%;"></div></div>
+                    <p id="tokens-opus-5h" class="window-tokens"></p>
                   </div>
                   <div class="quota-window-row">
                     <div class="window-info">
@@ -129,6 +135,7 @@
                     </div>
                     <p id="reset-opus-weekly" class="window-countdown">· Waiting for quota</p>
                     <div class="progress-track"><div id="bar-opus-weekly" class="progress-fill opus" style="width: 0%;"></div></div>
+                    <p id="tokens-opus-weekly" class="window-tokens"></p>
                   </div>
                 </div>
               </div>
@@ -139,6 +146,7 @@
               <div class="provider-header">
                 <span class="provider-pill">OpenAI</span>
                 <span id="openai-status-tag" class="provider-state-tag">구독: Plus</span>
+                <button class="provider-toggle" data-provider="openai" title="이 블록 표시/숨김">숨기기</button>
               </div>
               <div class="provider-models">
                 <div class="subscription-pool-banner">
@@ -156,6 +164,7 @@
                       <span id="label-codex-5h" class="window-val">Waiting for quota data</span>
                     </div>
                     <div class="progress-track"><div id="bar-codex-5h" class="progress-fill codex" style="width: 0%;"></div></div>
+                    <p id="tokens-codex-5h" class="window-tokens"></p>
                   </div>
                   <div class="quota-window-row">
                     <div class="window-info">
@@ -164,6 +173,7 @@
                     </div>
                     <p id="reset-codex-weekly" class="window-countdown">· Waiting for quota</p>
                     <div class="progress-track"><div id="bar-codex-weekly" class="progress-fill codex" style="width: 0%;"></div></div>
+                    <p id="tokens-codex-weekly" class="window-tokens"></p>
                   </div>
                 </div>
 
@@ -183,6 +193,7 @@
               <div class="provider-header">
                 <span class="provider-pill">Anthropic Claude</span>
                 <span id="claude-status-tag" class="provider-state-tag">No data</span>
+                <button class="provider-toggle" data-provider="claude" title="이 블록 표시/숨김">숨기기</button>
               </div>
               <div class="provider-models">
                 <div class="model-block">
@@ -219,16 +230,26 @@
               <div class="provider-header">
                 <span class="provider-pill">Local LLM</span>
                 <span id="local-llm-status-tag" class="provider-state-tag">Offline</span>
+                <button class="provider-toggle" data-provider="local" title="이 블록 표시/숨김">숨기기</button>
               </div>
               <div class="provider-models">
                 <div id="gpu-status-container" class="gpu-status-list">
                   <!-- Dynamically populated multi-GPU cards -->
                 </div>
                 <div class="local-compute-footer" style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#94a3b8;">
-                  <div>가동 모델: <strong id="local-loaded-model" style="color:#38bdf8;">qwen3.6:27b</strong></div>
-                  <div>엔드포인트: <span id="local-endpoint-health">정상 (127.0.0.1:11434)</span></div>
+                  <div>가동 모델: <strong id="local-loaded-model" style="color:#38bdf8;">—</strong></div>
+                  <div>엔드포인트: <span id="local-endpoint-health">동기화 대기 중…</span></div>
                 </div>
               </div>
+            </div>
+
+            <!-- Group 5: External providers (user-registered HTTP endpoints).
+                 Cards are appended to #external-providers-host by renderExternalProviders()
+                 (DOM API only — no innerHTML). -->
+            <div id="external-providers-host" class="token-providers-grid" style="display:contents;">
+              <button id="external-providers-toggle" class="card external-providers-empty" style="display:none; grid-column:1/-1; text-align:center;">
+                ＋ 외부 쿼터 provider 추가 — 설정 탭에서 HTTP 엔드포인트를 등록하세요
+              </button>
             </div>
           </div>
 
@@ -312,7 +333,7 @@
               <div class="stat-icon">🤖</div>
               <div class="stat-info">
                 <span class="stat-label">사용가능 에이전트</span>
-                <strong id="stat-agents" class="stat-value">- / 8개</strong>
+                <strong id="stat-agents" class="stat-value">- / 5개</strong>
               </div>
             </div>
             <div class="stat-card card">
@@ -344,7 +365,7 @@
           <div class="section-subhead">
             <div>
               <h2>연결된 에이전트 현황</h2>
-              <p class="muted">총 8개 공급자의 설치 및 MCP 연동 상태를 실시간 진단합니다.</p>
+              <p class="muted">공급자별 설치 및 MCP 연동 상태를 실시간 진단합니다. 같은 제품의 여러 설치면(예: ChatGPT 앱·MCP, Claude 데스크톱·Cowork)은 하나로 묶어 표시됩니다.</p>
             </div>
             <div class="legend-pills">
               <span class="status-pill available">사용가능</span>
@@ -443,8 +464,8 @@
               <h3>🚀 시스템 시작 및 백그라운드 가동</h3>
               <div class="setting-item flex-between">
                 <div>
-                  <span class="setting-label">Windows 시작 시 자동 실행</span>
-                  <p class="muted">컴퓨터를 켜면 Integrated Power 백그라운드 브로커 및 관제 센터가 자동으로 시작됩니다.</p>
+                  <span class="setting-label">OS 시작 시 자동 실행</span>
+                  <p class="muted">컴퓨터를 켜면 Integrated Power 백그라운드 브로커 및 관제 센터가 자동으로 시작됩니다 (Windows=레지스트리, macOS=launchd, Linux=XDG autostart).</p>
                 </div>
                 <label class="switch-toggle">
                   <input type="checkbox" id="setting-autostart-toggle" />
@@ -480,6 +501,77 @@
                   </select>
                 </div>
               </div>
+              <div class="setting-item flex-between">
+                <div>
+                  <span class="setting-label">게이지 눈금 (5h 5등분 · Weekly 7등분)</span>
+                  <p class="muted">진행 막대에 반투명한 눈금을 표시합니다 — 5시간 윈도우는 5등분, 주간 윈도우는 7등분.</p>
+                </div>
+                <label class="switch-toggle">
+                  <input type="checkbox" id="setting-gauge-ticks" checked />
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="setting-item flex-between">
+                <div>
+                  <span class="setting-label">작업표시줄에 창 표시 (OS 공통)</span>
+                  <p class="muted">Windows 작업표시줄 / macOS Dock / Linux 패널에 창을 표시합니다. 끄면 트레이(Windows)로 축소되고, 다시 켜면 작업표시줄로 복귀합니다.</p>
+                </div>
+                <label class="switch-toggle">
+                  <input type="checkbox" id="setting-taskbar-toggle" checked />
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- External quota providers -->
+            <div class="card settings-card">
+              <h3>🧩 외부 provider (커스텀 엔드포인트)</h3>
+              <p class="muted" style="margin-top:4px;">
+                vLLM / LM Studio / Ollama / SGLang / 자체 게이트웨이 등 <strong>OpenAI 호환 엔드포인트</strong>를
+                등록합니다. <strong>⚡ 테스트</strong>는 서버 연결 + 모델 조회(
+                <code>GET /v1/models</code> 또는 Ollama <code>/api/tags</code>)를 수행하고, quota 엔드포인트가
+                있으면 quota 윈도우도 함께 파싱합니다. 등록된 provider는 토큰 탭에 카드가 생기고
+                <code>remainingPercentage</code>·<code>usedPercentage</code>·토큰 한도쌍을 자동 인식합니다.
+              </p>
+              <div class="setting-item">
+                <div style="display:grid; grid-template-columns: minmax(120px,1fr) minmax(220px,2fr); gap:8px; align-items:end;">
+                  <label style="font-size:11px; color:#94a3b8;">이름
+                    <input type="text" id="ext-name" placeholder="예: vLLM remote" style="width:100%; margin-top:4px; box-sizing:border-box;" />
+                  </label>
+                  <label style="font-size:11px; color:#94a3b8;">엔드포인트 URL
+                    <input type="text" id="ext-url" placeholder="http://192.168.0.29:18082/v1" style="width:100%; margin-top:4px; box-sizing:border-box;" />
+                  </label>
+                  <label style="font-size:11px; color:#94a3b8;">API Key <span class="muted">(로컬 서버는 비워도 됨)</span>
+                    <input type="password" id="ext-apikey" placeholder="기존 키 유지하려면 비워둡니다" style="width:100%; margin-top:4px; box-sizing:border-box;" />
+                  </label>
+                  <label style="font-size:11px; color:#94a3b8;">기본 모델
+                    <input type="text" id="ext-model" placeholder="예: Qwen3.8-27B-AWQ (비우면 자동)" style="width:100%; margin-top:4px; box-sizing:border-box;" />
+                  </label>
+                  <label style="font-size:11px; color:#94a3b8; grid-column:1 / -1;">quota 엔드포인트 (선택 — 없으면 모델 조회만)
+                    <input type="text" id="ext-quota" placeholder="https://api.openai.com/v1/organization/usage" style="width:100%; margin-top:4px; box-sizing:border-box;" />
+                  </label>
+                </div>
+                <div style="display:flex; gap:16px; align-items:center; margin-top:10px; flex-wrap:wrap;">
+                  <label style="font-size:12px; color:#cbd5e1; display:flex; gap:6px; align-items:center;">
+                    <input type="checkbox" id="ext-discover" checked /> 모델 자동 조회
+                  </label>
+                  <label style="font-size:12px; color:#cbd5e1; display:flex; gap:6px; align-items:center;">
+                    갱신 주기
+                    <select id="ext-poll" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); color:#e2e8f0; border-radius:6px; padding:2px 6px;">
+                      <option value="10">10초</option>
+                      <option value="30">30초</option>
+                      <option value="60" selected>60초 (기본)</option>
+                      <option value="300">5분</option>
+                      <option value="900">15분</option>
+                    </select>
+                  </label>
+                  <span style="flex:1;"></span>
+                  <button id="ext-test" class="button">⚡ 테스트</button>
+                  <button id="ext-add" class="button primary">💾 등록</button>
+                </div>
+              </div>
+              <div id="ext-test-result" style="display:none; margin-top:10px; padding:10px 12px; border:1px solid rgba(255,255,255,0.12); border-radius:8px; background:rgba(255,255,255,0.03); font-size:12px;"></div>
+              <div id="ext-error" style="font-size:11px; color:#f87171; margin-top:6px; min-height:14px;"></div>
             </div>
 
             <!-- Network Endpoints -->
@@ -487,19 +579,19 @@
               <h3>🌐 브로커 네트워크 엔드포인트</h3>
               <div class="setting-item">
                 <span class="setting-label">바인드 주소</span>
-                <code class="code-box">http://127.0.0.1:37241</code>
+                <code class="code-box" id="settings-bind-url">http://127.0.0.1:37241</code>
               </div>
               <div class="setting-item">
                 <span class="setting-label">토큰 상태 엔드포인트</span>
-                <code class="code-box">http://127.0.0.1:37241/v1/tokens/status</code>
+                <code class="code-box" id="settings-status-url">http://127.0.0.1:37241/v1/tokens/status</code>
               </div>
               <div class="setting-item">
                 <span class="setting-label">MCP SSE 엔드포인트 (ChatGPT)</span>
-                <code class="code-box">http://127.0.0.1:37241/mcp</code>
+                <code class="code-box" id="settings-mcp-url">http://127.0.0.1:37241/mcp</code>
               </div>
               <div class="setting-item">
                 <span class="setting-label">A2A 프로토콜 카드</span>
-                <code class="code-box">http://127.0.0.1:37241/.well-known/agent-card.json</code>
+                <code class="code-box" id="settings-agent-card-url">http://127.0.0.1:37241/.well-known/agent-card.json</code>
               </div>
             </div>
 
@@ -519,7 +611,7 @@
                 </div>
                 <div style="margin-top:8px; padding:8px; background:#0f172a; border-radius:6px; font-size:11px; color:#94a3b8;">
                   <div>💡 <strong>Claude CLI (@anthropic-ai/claude-code) 연동:</strong></div>
-                  <div>터미널에서 <code>claude mcp add integrated-power http://127.0.0.1:37241/mcp</code> 실행</div>
+                  <div>터미널에서 <code id="settings-claude-cli-cmd">claude mcp add integrated-power http://127.0.0.1:37241/mcp</code> 실행</div>
                   <div style="margin-top:4px;">🔑 <strong>API 키 환경변수:</strong> <code>ANTHROPIC_API_KEY</code> 설정 시 Direct Usage로 자동 측정됩니다.</div>
                 </div>
               </div>
@@ -529,11 +621,12 @@
                   <span class="setting-label">OpenAI ChatGPT Desktop</span>
                   <span class="status-pill available" style="font-size:10px;">MCP 지원</span>
                 </div>
-                <p class="muted" style="margin-top:2px;">맞춤형 MCP > <code>스트리밍 가능한 HTTP</code> > <code>http://127.0.0.1:37241/mcp</code></p>
+                <p class="muted" style="margin-top:2px;">맞춤형 MCP > <code>스트리밍 가능한 HTTP</code> > <code id="settings-chatgpt-mcp-url">http://127.0.0.1:37241/mcp</code></p>
                 <div style="display:flex; gap:8px; margin-top:8px;">
                   <button id="btn-settings-chatgpt" class="button secondary copy-chatgpt-mcp">📋 ChatGPT URL 복사</button>
                 </div>
               </div>
+            </div>
 
             <!-- Storage & Encryption -->
             <div class="card settings-card">
@@ -554,7 +647,7 @@
 
         <footer class="statusbar">
           <span id="status" class="muted">브로커 상태를 확인하는 중…</span>
-          <span>Integrated Power v0.9.0 · Windows 11 Fluent loopback</span>
+          <span>Integrated Power v0.9.2 · Windows 11 Fluent loopback</span>
         </footer>
       </main>
     </div>
