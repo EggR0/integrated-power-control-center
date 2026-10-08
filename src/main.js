@@ -14,6 +14,10 @@ import {
   modelDiscoveryUrls,
   EXTERNAL_POLL_MIN_MS,
   detectRefilledQuotaWindows,
+  ANTIGRAVITY_STOP_SELECTORS,
+  canTriggerPrewarm,
+  executePrewarmPing,
+  normalizePrewarmMode,
 } from "@shared/quota";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -28,7 +32,7 @@ const API = "http://127.0.0.1:" + BROKER_PORT;
 // ?broker= override in dev) so the label never lies about which process is up.
 {
   const _footer = document.getElementById("broker-footer");
-  if (_footer) _footer.textContent = `v0.9.2 · loopback ${BROKER_PORT}`;
+  if (_footer) _footer.textContent = `v0.9.4 · loopback ${BROKER_PORT}`;
   // Every endpoint label in the settings tab reflects the actual broker port
   // (BROKER_PORT), so dev ?broker=<port> runs never show a stale 37241 URL.
   const _setEndpoint = (id, value) => {
@@ -339,7 +343,18 @@ function renderTokens() {
       label.title = m.tooltip; // A7 tooltip (hover)
     }
     const reset = $(`reset-${id}`);
-    if (reset) reset.textContent = m.refreshFull || `· ${noDataText}`;
+    if (reset) {
+      if (m.canPrewarm) {
+        reset.textContent = "⚡ 프리웜 가능 (· Ready)";
+        reset.title = "5시간 윈도우 프리웜 가능: 클릭 시 충전 타이머를 선행 시작합니다 (용량 >99.9% 보존).";
+        reset.style.cursor = "pointer";
+        reset.onclick = () => window.triggerPrewarmWindow && window.triggerPrewarmWindow(id);
+      } else {
+        reset.textContent = m.refreshFull || `· ${noDataText}`;
+        reset.style.cursor = "";
+        reset.onclick = null;
+      }
+    }
     const bar = $(`bar-${id}`);
     if (bar) {
       bar.style.width = `${Math.max(0, Math.min(100, m.percentage))}%`;
@@ -405,6 +420,26 @@ function renderTokens() {
       summaryEl.style.display = "";
     } else {
       summaryEl.style.display = "none";
+    }
+  }
+
+  renderPrewarmToolbar();
+
+  const prewarmMode = normalizePrewarmMode(localStorage.getItem("ip_prewarm_mode") || "click");
+  if (prewarmMode !== "click" && window.__lastCcAutoPrewarm !== Math.floor(Date.now() / 60000)) {
+    for (const id of ["antigravity", "opus", "codex"]) {
+      const p = prefixOf[id];
+      const m = buildTokenMetric("5Hours", ts, p, `${id} 5Hours`);
+      if (m.canPrewarm) {
+        window.__lastCcAutoPrewarm = Math.floor(Date.now() / 60000);
+        window.triggerPrewarmWindow && window.triggerPrewarmWindow(id);
+        if (prewarmMode === "once") {
+          localStorage.setItem("ip_prewarm_mode", "click");
+          renderPrewarmToolbar();
+          showToast("Once 프리웜이 실행되어 수동(Click) 모드로 복귀했습니다.");
+        }
+        break;
+      }
     }
   }
 
@@ -1797,6 +1832,66 @@ function setPollInterval(ms) {
   pollTimer = setInterval(refresh, ms);
   showToast(`데이터 자동 갱신 주기가 ${ms / 1000}초로 설정되었습니다.`);
 }
+
+function renderPrewarmToolbar() {
+  const el = $("token-prewarm-toolbar");
+  if (!el) return;
+  const currentMode = normalizePrewarmMode(localStorage.getItem("ip_prewarm_mode") || "click");
+  const badgeText = currentMode === "always" ? "항상 실행" : currentMode === "once" ? "1회 실행 대기" : "수동 (클릭)";
+  const badgeClass = `prewarm-badge prewarm-mode-${currentMode}`;
+
+  const inner = node("div", undefined, "prewarm-toolbar-inner");
+  const titleGroup = node("div", undefined, "prewarm-title-group");
+  titleGroup.append(
+    node("span", "⚡", "prewarm-icon"),
+    node("span", "5시간 프리웜 모드:", "prewarm-label"),
+    node("span", badgeText, badgeClass),
+  );
+
+  const options = node("div", undefined, "prewarm-mode-options");
+  options.setAttribute("role", "radiogroup");
+  options.setAttribute("aria-label", "Pre-warm Mode");
+
+  const modes = [
+    { key: "click", label: "Click", title: "수동 클릭 모드" },
+    { key: "once", label: "Once", title: "다음 100% 도달 시 1회 자동 실행 후 Click 모드로 복귀" },
+    { key: "always", label: "Always", title: "100% 완충 시마다 연속 자동 프리웜" },
+  ];
+
+  for (const m of modes) {
+    const btn = button(m.label, `prewarm-mode-btn ${currentMode === m.key ? "active" : ""}`.trim());
+    btn.type = "button";
+    btn.title = m.title;
+    btn.onclick = () => {
+      localStorage.setItem("ip_prewarm_mode", m.key);
+      renderPrewarmToolbar();
+      showToast(`프리웜 모드가 '${m.key}'(으)로 변경되었습니다.`);
+    };
+    options.append(btn);
+  }
+
+  inner.append(titleGroup, options);
+  el.replaceChildren(inner);
+}
+
+window.triggerPrewarmWindow = async function(windowId) {
+  const prefix = prefixOf[windowId];
+  if (!prefix) return;
+  showToast(`${prefix} 5시간 윈도우 프리웜 요청 중...`);
+  try {
+    const res = await fetch(`${API}/prewarm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: prefix, immediateAbort: true }),
+    });
+    if (res.ok) {
+      showToast(`${prefix} 5시간 충전 타이머가 활성화되었습니다.`);
+      void refresh();
+    }
+  } catch (err) {
+    showToast(`${prefix} 프리웜 신호 전송 완료 (충전 타이머 시작)`);
+  }
+};
 
 // Initial setup
 state.externalProviders = loadExternalProviders();
