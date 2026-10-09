@@ -1,7 +1,7 @@
 {
   "name": "integrated-power-control-center",
   "private": true,
-  "version": "0.9.4",
+  "version": "0.9.5",
   "scripts": {
     "dev": "node ./scripts/dev.js",
     "build": "vite build",
