@@ -427,24 +427,25 @@ function renderTokens() {
 
   renderPrewarmToolbar();
 
-  const prewarmMode = normalizePrewarmMode(localStorage.getItem("ip_prewarm_mode") || "click");
-  if (prewarmMode !== "click" && window.__lastCcAutoPrewarm !== Math.floor(Date.now() / 60000)) {
-    const targets = [
-      { id: "gemini-5h", prefix: "antigravity", weekly: "antigravityWeekly" },
-      { id: "opus-5h", prefix: "opus", weekly: "opusWeekly" },
-      { id: "codex-5h", prefix: "codex", weekly: "codexWeekly" },
-    ];
+  const targets = [
+    { id: "gemini-5h", prefix: "antigravity", weekly: "antigravityWeekly", label: "Gemini" },
+    { id: "opus-5h", prefix: "opus", weekly: "opusWeekly", label: "Claude" },
+    { id: "codex-5h", prefix: "codex", weekly: "codexWeekly", label: "ChatGPT" },
+  ];
+  if (window.__lastCcAutoPrewarm !== Math.floor(Date.now() / 60000)) {
     for (const target of targets) {
+      const targetMode = getModelPrewarmMode(target.prefix);
+      if (targetMode === "click") continue;
+
       const m = buildTokenMetric("5Hours", ts, target.prefix, `${target.prefix} 5Hours`, target.weekly);
       if (m.canPrewarm) {
         window.__lastCcAutoPrewarm = Math.floor(Date.now() / 60000);
         window.triggerPrewarmWindow && window.triggerPrewarmWindow(target.id);
-        if (prewarmMode === "once") {
-          localStorage.setItem("ip_prewarm_mode", "click");
+        if (targetMode === "once") {
+          setModelPrewarmMode(target.prefix, "click");
           renderPrewarmToolbar();
-          showToast("Once 프리웜이 실행되어 수동(Click) 모드로 복귀했습니다.");
+          showToast(`${target.label} Once 프리웜이 실행되어 수동(Click) 모드로 복귀했습니다.`);
         }
-        break;
       }
     }
   }
@@ -1839,44 +1840,62 @@ function setPollInterval(ms) {
   showToast(`데이터 자동 갱신 주기가 ${ms / 1000}초로 설정되었습니다.`);
 }
 
+function getModelPrewarmMode(prefix) {
+  return normalizePrewarmMode(localStorage.getItem(`ip_prewarm_mode_${prefix}`) || localStorage.getItem("ip_prewarm_mode") || "click");
+}
+
+function setModelPrewarmMode(prefix, mode) {
+  localStorage.setItem(`ip_prewarm_mode_${prefix}`, mode);
+}
+
 function renderPrewarmToolbar() {
   const el = $("token-prewarm-toolbar");
   if (!el) return;
-  const currentMode = normalizePrewarmMode(localStorage.getItem("ip_prewarm_mode") || "click");
-  const badgeText = currentMode === "always" ? "항상 실행" : currentMode === "once" ? "1회 실행 대기" : "수동 (클릭)";
-  const badgeClass = `prewarm-badge prewarm-mode-${currentMode}`;
 
   const inner = node("div", undefined, "prewarm-toolbar-inner");
   const titleGroup = node("div", undefined, "prewarm-title-group");
   titleGroup.append(
     node("span", "⚡", "prewarm-icon"),
-    node("span", "5시간 프리웜 모드:", "prewarm-label"),
-    node("span", badgeText, badgeClass),
+    node("span", "5시간 자동 프리웜:", "prewarm-label"),
   );
 
-  const options = node("div", undefined, "prewarm-mode-options");
-  options.setAttribute("role", "radiogroup");
-  options.setAttribute("aria-label", "Pre-warm Mode");
+  const targets = [
+    { key: "antigravity", label: "Gemini" },
+    { key: "opus", label: "Claude" },
+    { key: "codex", label: "ChatGPT" },
+  ];
 
+  const grid = node("div", undefined, "prewarm-targets-grid");
   const modes = [
     { key: "click", label: "Click", title: "수동 클릭 모드" },
     { key: "once", label: "Once", title: "다음 100% 도달 시 1회 자동 실행 후 Click 모드로 복귀" },
     { key: "always", label: "Always", title: "100% 완충 시마다 연속 자동 프리웜" },
   ];
 
-  for (const m of modes) {
-    const btn = button(m.label, `prewarm-mode-btn ${currentMode === m.key ? "active" : ""}`.trim());
-    btn.type = "button";
-    btn.title = m.title;
-    btn.onclick = () => {
-      localStorage.setItem("ip_prewarm_mode", m.key);
-      renderPrewarmToolbar();
-      showToast(`프리웜 모드가 '${m.key}'(으)로 변경되었습니다.`);
-    };
-    options.append(btn);
+  for (const t of targets) {
+    const currentMode = getModelPrewarmMode(t.key);
+    const row = node("div", undefined, "prewarm-target-row");
+    const label = node("span", t.label, "prewarm-target-label");
+    const options = node("div", undefined, "prewarm-mode-options");
+    options.setAttribute("role", "radiogroup");
+    options.setAttribute("aria-label", `${t.label} Pre-warm Mode`);
+
+    for (const m of modes) {
+      const btn = button(m.label, `prewarm-mode-btn ${currentMode === m.key ? "active" : ""}`.trim());
+      btn.type = "button";
+      btn.title = `${t.label} - ${m.title}`;
+      btn.onclick = () => {
+        setModelPrewarmMode(t.key, m.key);
+        renderPrewarmToolbar();
+        showToast(`${t.label} 프리웜 모드가 '${m.key}'(으)로 변경되었습니다.`);
+      };
+      options.append(btn);
+    }
+    row.append(label, options);
+    grid.append(row);
   }
 
-  inner.append(titleGroup, options);
+  inner.append(titleGroup, grid);
   el.replaceChildren(inner);
 }
 

@@ -589,10 +589,10 @@ textarea { min-height: 56px; resize: vertical; }
   margin-top: 8px;
 }
 .token-prewarm-toolbar .prewarm-toolbar-inner {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 12px;
   background: rgba(15, 23, 42, 0.7);
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 8px;
@@ -602,6 +602,22 @@ textarea { min-height: 56px; resize: vertical; }
   display: flex;
   align-items: center;
   gap: 5px;
+}
+.token-prewarm-toolbar .prewarm-targets-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.token-prewarm-toolbar .prewarm-target-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.token-prewarm-toolbar .prewarm-target-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 44px;
 }
 .token-prewarm-toolbar .prewarm-icon {
   color: #fbbf24;
