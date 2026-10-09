@@ -60,6 +60,13 @@ const quotaSettings = mergeQuotaSettings({
   notifyOnFull: localStorage.getItem("ip_notify_full_tokens") !== "false",
 });
 
+const prefixOf = {
+  "gemini-5h": "antigravity", "gemini-weekly": "antigravityWeekly",
+  "opus-5h": "opus", "opus-weekly": "opusWeekly",
+  "codex-5h": "codex", "codex-weekly": "codexWeekly",
+  "antigravity": "antigravity", "opus": "opus", "codex": "codex",
+};
+
 const state = {
   capabilities: [],
   tasks: [],
@@ -330,11 +337,6 @@ function renderTokens() {
   // not the same as an error; keep the wording consistent across labels,
   // bars, and reset stamps.
   const noDataText = "쿼터 대기 중";
-  const prefixOf = {
-    "gemini-5h": "antigravity", "gemini-weekly": "antigravityWeekly",
-    "opus-5h": "opus", "opus-weekly": "opusWeekly",
-    "codex-5h": "codex", "codex-weekly": "codexWeekly",
-  };
 
   for (const [id, m] of Object.entries(windows)) {
     const label = $(`label-${id}`);
@@ -427,12 +429,16 @@ function renderTokens() {
 
   const prewarmMode = normalizePrewarmMode(localStorage.getItem("ip_prewarm_mode") || "click");
   if (prewarmMode !== "click" && window.__lastCcAutoPrewarm !== Math.floor(Date.now() / 60000)) {
-    for (const id of ["antigravity", "opus", "codex"]) {
-      const p = prefixOf[id];
-      const m = buildTokenMetric("5Hours", ts, p, `${id} 5Hours`);
+    const targets = [
+      { id: "gemini-5h", prefix: "antigravity", weekly: "antigravityWeekly" },
+      { id: "opus-5h", prefix: "opus", weekly: "opusWeekly" },
+      { id: "codex-5h", prefix: "codex", weekly: "codexWeekly" },
+    ];
+    for (const target of targets) {
+      const m = buildTokenMetric("5Hours", ts, target.prefix, `${target.prefix} 5Hours`, target.weekly);
       if (m.canPrewarm) {
         window.__lastCcAutoPrewarm = Math.floor(Date.now() / 60000);
-        window.triggerPrewarmWindow && window.triggerPrewarmWindow(id);
+        window.triggerPrewarmWindow && window.triggerPrewarmWindow(target.id);
         if (prewarmMode === "once") {
           localStorage.setItem("ip_prewarm_mode", "click");
           renderPrewarmToolbar();
@@ -1875,8 +1881,15 @@ function renderPrewarmToolbar() {
 }
 
 window.triggerPrewarmWindow = async function(windowId) {
-  const prefix = prefixOf[windowId];
+  const prefix = prefixOf[windowId] || windowId;
   if (!prefix) return;
+  const ts = state.tokenStatus || {};
+  const weeklyPrefix = prefix === "antigravity" ? "antigravityWeekly" : prefix === "opus" ? "opusWeekly" : "codexWeekly";
+  const m = buildTokenMetric("5Hours", ts, prefix, `${prefix} 5Hours`, weeklyPrefix);
+  if (!m.canPrewarm) {
+    showToast(`${prefix} 5시간 윈도우가 100% 충전 상태가 아니거나 주간 한도가 소진되어 프리웜할 수 없습니다.`);
+    return;
+  }
   showToast(`${prefix} 5시간 윈도우 프리웜 요청 중...`);
   try {
     const res = await fetch(`${API}/prewarm`, {
@@ -1887,6 +1900,9 @@ window.triggerPrewarmWindow = async function(windowId) {
     if (res.ok) {
       showToast(`${prefix} 5시간 충전 타이머가 활성화되었습니다.`);
       void refresh();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error || `${prefix} 프리웜 건너뜀 (${res.status})`);
     }
   } catch (err) {
     showToast(`${prefix} 프리웜 신호 전송 완료 (충전 타이머 시작)`);
