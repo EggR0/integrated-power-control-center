@@ -347,7 +347,7 @@ function renderTokens() {
     const reset = $(`reset-${id}`);
     if (reset) {
       if (m.canPrewarm) {
-        reset.textContent = "⚡ 프리웜 가능 (· Ready)";
+        reset.textContent = m.refreshFull ? `⚡ 프리웜 가능 (${m.refreshFull.replace(/^·\s*/, "")})` : "⚡ 프리웜 가능 (· Ready)";
         reset.title = "5시간 윈도우 프리웜 가능: 클릭 시 충전 타이머를 선행 시작합니다 (용량 >99.9% 보존).";
         reset.style.cursor = "pointer";
         reset.onclick = () => window.triggerPrewarmWindow && window.triggerPrewarmWindow(id);
