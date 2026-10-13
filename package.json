@@ -1,24 +1,32 @@
 {
   "name": "integrated-power-control-center",
   "private": true,
-  "version": "0.9.6",
+  "version": "0.9.22",
   "scripts": {
     "dev": "node ./scripts/dev.js",
-    "build": "vite build",
-    "compile:broker": "cd ../vscode-extension && tsc -p .",
+    "build": "node ./scripts/build-ui.js",
+    "compile:broker": "node ./scripts/compile-broker.js",
     "prepare:broker": "node ./scripts/copy-broker.js",
     "verify:package": "node ./scripts/verify-package.js",
+    "test:broker-package": "node ./scripts/test-broker-package.js",
+    "test:canonical-broker-startup": "node ./scripts/test-canonical-broker-startup.js",
+    "test:api-read-state": "node ./scripts/test-api-read-state.js",
     "broker": "node ./broker-server.js",
     "mcp": "node ./mcp-server.js",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "test:compact-ui": "node ./scripts/test-desktop-compact-ui.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.5.0",
     "vite": "^6.1.0"
   },
   "dependencies": {
+    "@ag-ui/core": "^0.0.57",
     "@a2a-js/sdk": "^1.0.1",
-    "@tauri-apps/api": "^2.11.1"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "gray-matter": "^4.0.3",
+    "@tauri-apps/api": "^2.11.1",
+    "zod": "^4.4.3"
   }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "integrated-power-control-center"
-version = "0.8.0"
+version = "0.9.22"
 description = "Integrated Power local control center"
 authors = ["EggR"]
 edition = "2021"

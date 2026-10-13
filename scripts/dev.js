@@ -5,16 +5,26 @@
 // box — no ?broker= needed.
 const { spawn } = require("child_process");
 const path = require("path");
+const { resolveBrokerPackage } = require("./broker-package.js");
+const { getSharedQuotaSource } = require("./shared-quota-source.js");
 
 const root = path.join(__dirname, "..");
-const vite = spawn("npx", ["vite", "--host", "127.0.0.1"], {
+const packagePath = process.env.INTEGRATED_POWER_BROKER_PACKAGE || path.join(root, "broker-out", "broker");
+const sourcePath = process.env.INTEGRATED_POWER_BROKER_SOURCE;
+const brokerPackage = resolveBrokerPackage({
+  modulePath: process.env.INTEGRATED_POWER_BROKER_MODULE,
+  sourcePath,
+  packagePath: process.env.INTEGRATED_POWER_BROKER_MODULE || sourcePath ? undefined : packagePath,
+});
+const vite = spawn(process.execPath, [path.join(root, "node_modules", "vite", "bin", "vite.js"), "--host", "127.0.0.1"], {
   stdio: "inherit",
-  shell: true,
   cwd: root,
+  env: { ...process.env, INTEGRATED_POWER_SHARED_QUOTA_SOURCE: getSharedQuotaSource() },
 });
 const broker = spawn(process.execPath, [path.join(root, "broker-server.js")], {
   stdio: "inherit",
   cwd: root,
+  env: { ...process.env, INTEGRATED_POWER_BROKER_MODULE: brokerPackage.root },
 });
 
 let done = false;

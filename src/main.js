@@ -5,6 +5,7 @@ import {
   clampPollInterval,
   buildTokenMetric,
   absoluteTokenText,
+  buildGaugeTickGradient,
   calculateCapacitySummary,
   localServerBadge,
   localLoadedModelLabel,
@@ -15,11 +16,12 @@ import {
   EXTERNAL_POLL_MIN_MS,
   detectRefilledQuotaWindows,
   ANTIGRAVITY_STOP_SELECTORS,
+  PREWARM_TARGETS,
   canTriggerPrewarm,
-  executePrewarmPing,
-  normalizePrewarmMode,
 } from "@shared/quota";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauri } from "@tauri-apps/api/core";
+import { classifyCollectionResponse } from "./api-read-state.mjs";
 
 // Broker base URL. 37241 is the canonical standalone port; during vite dev a
 // separate broker on another port can be attached with ?broker=<port> (dev-only
@@ -32,7 +34,7 @@ const API = "http://127.0.0.1:" + BROKER_PORT;
 // ?broker= override in dev) so the label never lies about which process is up.
 {
   const _footer = document.getElementById("broker-footer");
-  if (_footer) _footer.textContent = `v0.9.6 · loopback ${BROKER_PORT}`;
+  if (_footer) _footer.textContent = `v0.9.22 · loopback ${BROKER_PORT}`;
   // Every endpoint label in the settings tab reflects the actual broker port
   // (BROKER_PORT), so dev ?broker=<port> runs never show a stale 37241 URL.
   const _setEndpoint = (id, value) => {
@@ -58,6 +60,11 @@ const streams = new Map();
 const quotaSettings = mergeQuotaSettings({
   pollIntervalMs: localStorage.getItem("ip_poll_interval") ? Number(localStorage.getItem("ip_poll_interval")) : undefined,
   notifyOnFull: localStorage.getItem("ip_notify_full_tokens") !== "false",
+  prewarmModes: {
+    antigravity: localStorage.getItem("ip_prewarm_mode_antigravity") || localStorage.getItem("ip_prewarm_mode"),
+    opus: localStorage.getItem("ip_prewarm_mode_opus") || localStorage.getItem("ip_prewarm_mode"),
+    codex: localStorage.getItem("ip_prewarm_mode_codex") || localStorage.getItem("ip_prewarm_mode"),
+  },
 });
 
 const prefixOf = {
@@ -66,6 +73,7 @@ const prefixOf = {
   "codex-5h": "codex", "codex-weekly": "codexWeekly",
   "antigravity": "antigravity", "opus": "opus", "codex": "codex",
 };
+const prewarmModelByWindow = { "gemini-5h": "antigravity", "opus-5h": "opus", "codex-5h": "codex" };
 
 const state = {
   capabilities: [],
@@ -88,6 +96,13 @@ const state = {
   externalData: {},
   // Latest discovered model list per provider id (OpenAI /v1/models or Ollama /api/tags).
   externalModels: {},
+  workspaceId: localStorage.getItem("ip_workspace_id") || "",
+  workspacePath: localStorage.getItem("ip_workspace_path") || "",
+  workspaces: [],
+  quotaSettingsRevision: 0,
+  quotaSettingsInitialized: false,
+  quotaSettings: { ...quotaSettings, prewarmModes: { ...quotaSettings.prewarmModes }, notifications: { ...quotaSettings.notifications } },
+  brokerHealth: null,
 };
 
 const defaults = [
@@ -170,12 +185,105 @@ async function api(path, options = {}) {
     let body = {};
     try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
     if (!response.ok) {
-      const err = new Error(body.error || `HTTP ${response.status}`);
+      const err = new Error(body.error || (Array.isArray(body.errors) ? body.errors.map((item) => typeof item === "string" ? item : item?.message || item?.error || item?.code).filter(Boolean).join(" · ") : "") || `HTTP ${response.status}`);
       err.status = response.status;
+      err.body = body;
       throw err;
     }
     return body;
   } finally { clearTimeout(timer); }
+}
+
+function workspaceReadUrl(endpoint) {
+  const query = new URLSearchParams();
+  if (state.workspacePath.trim()) query.set("workspacePath", state.workspacePath.trim());
+  else if (state.workspaceId) query.set("workspaceId", state.workspaceId);
+  else return undefined;
+  return `${endpoint}?${query}`;
+}
+
+function workspaceSelectionValue() {
+  return state.workspacePath ? `path:${state.workspacePath}` : state.workspaceId ? `id:${state.workspaceId}` : "";
+}
+
+function renderWorkspaceChoices() {
+  const select = $("workspace-context-select");
+  if (!select) return;
+  const selected = workspaceSelectionValue();
+  select.replaceChildren();
+  select.append(new Option("워크스페이스 선택", ""));
+  for (const workspace of state.workspaces) {
+    if (workspace?.workspaceId) select.append(new Option(workspace.workspaceId, `id:${workspace.workspaceId}`));
+  }
+  const paths = [...new Set(state.tasks.map((task) => task.workspacePath).filter((value) => typeof value === "string" && value.trim()))];
+  for (const workspacePath of paths) select.append(new Option(workspacePath, `path:${workspacePath}`));
+  select.value = selected;
+  const pathInput = $("workspace-context-path");
+  if (pathInput && pathInput.value !== state.workspacePath) pathInput.value = state.workspacePath;
+}
+
+function setWorkspaceContext(value, pathValue = "") {
+  state.workspaceId = value.startsWith("id:") ? value.slice(3) : "";
+  state.workspacePath = pathValue.trim() || (value.startsWith("path:") ? value.slice(5) : "");
+  localStorage.setItem("ip_workspace_id", state.workspaceId);
+  localStorage.setItem("ip_workspace_path", state.workspacePath);
+  renderWorkspaceChoices();
+  void refresh();
+}
+
+function updateWorkspaceContextFromControls() {
+  const selectValue = $("workspace-context-select")?.value || "";
+  const pathValue = $("workspace-context-path")?.value || "";
+  setWorkspaceContext(selectValue, pathValue);
+}
+
+function applyQuotaSettingsEnvelope(envelope) {
+  if (!envelope || envelope.ok === false || !envelope.settings) return false;
+  state.quotaSettingsRevision = Number(envelope.revision) || 0;
+  state.quotaSettingsInitialized = Boolean(envelope.initialized);
+  if (!state.quotaSettingsInitialized) return true;
+  state.quotaSettings = mergeQuotaSettings(envelope.settings);
+  state.pollInterval = state.quotaSettings.pollIntervalMs;
+  state.notifyOnFullTokens = state.quotaSettings.notifyOnFull;
+  for (const [prefix, mode] of Object.entries(state.quotaSettings.prewarmModes)) localStorage.setItem(`ip_prewarm_mode_${prefix}`, mode);
+  localStorage.setItem("ip_poll_interval", String(state.pollInterval));
+  localStorage.setItem("ip_notify_full_tokens", String(state.notifyOnFullTokens));
+  if ($("setting-poll-interval-select")) $("setting-poll-interval-select").value = String(state.pollInterval);
+  if ($("token-notify-quick-toggle")) $("token-notify-quick-toggle").checked = state.notifyOnFullTokens;
+  if ($("setting-token-notify-toggle")) $("setting-token-notify-toggle").checked = state.notifyOnFullTokens;
+  if (pollTimer && pollTimerInterval !== state.pollInterval) {
+    clearInterval(pollTimer);
+    pollTimerInterval = state.pollInterval;
+    pollTimer = setInterval(refresh, state.pollInterval);
+  }
+  renderPrewarmToolbar();
+  return true;
+}
+
+async function saveQuotaSettings({ message } = {}) {
+  const initializeFrom = state.quotaSettingsInitialized ? undefined : "desktop";
+  try {
+    const saved = await api("/v1/settings/quota", {
+      method: "POST",
+      body: JSON.stringify({
+        settings: state.quotaSettings,
+        expectedRevision: state.quotaSettingsRevision,
+        idempotencyKey: crypto.randomUUID(),
+        ...(initializeFrom ? { initializeFrom } : {}),
+      }),
+    });
+    applyQuotaSettingsEnvelope(saved);
+    if (message) showToast(message);
+    return true;
+  } catch (error) {
+    if (error.status === 409 && error.body?.settings) {
+      applyQuotaSettingsEnvelope(error.body);
+      showToast("설정이 다른 화면에서 바뀌었습니다. 최신 서버 설정을 적용했습니다.", true);
+    } else {
+      showToast(`통합 설정 저장 실패: ${error.message}`, true);
+    }
+    return false;
+  }
 }
 
 // A broker built before the P7 external route answers /v1/providers/external
@@ -346,16 +454,29 @@ function renderTokens() {
     }
     const reset = $(`reset-${id}`);
     if (reset) {
-      if (m.canPrewarm) {
-        reset.textContent = m.refreshFull ? `⚡ 프리웜 가능 (${m.refreshFull.replace(/^·\s*/, "")})` : "⚡ 프리웜 가능 (· Ready)";
-        reset.title = "5시간 윈도우 프리웜 가능: 클릭 시 충전 타이머를 선행 시작합니다 (용량 >99.9% 보존).";
-        reset.style.cursor = "pointer";
-        reset.onclick = () => window.triggerPrewarmWindow && window.triggerPrewarmWindow(id);
-      } else {
-        reset.textContent = m.refreshFull || `· ${noDataText}`;
-        reset.style.cursor = "";
-        reset.onclick = null;
-      }
+      reset.textContent = m.refreshFull || `· ${noDataText}`;
+      reset.title = m.tooltip;
+      reset.style.cursor = "";
+      reset.onclick = null;
+    }
+    const prewarmButton = $(`prewarm-${id}`);
+    if (prewarmButton) {
+      const model = prewarmModelByWindow[id];
+      const target = PREWARM_TARGETS.find((candidate) => candidate.model === model);
+      const allowed = Boolean(target && canTriggerPrewarm(m));
+      const reason = m.unavailable
+        ? "쿼터 정보를 확인할 수 없습니다."
+        : m.isWeeklyExhausted
+          ? "주간 쿼터 소진으로 프리웜을 실행할 수 없습니다."
+          : m.refreshFull && m.refreshFull !== "· Ready"
+            ? `5시간 재충전 중입니다 (${m.refreshFull}).`
+            : "5시간 쿼터가 100% Ready일 때 실행할 수 있습니다.";
+      prewarmButton.disabled = !allowed;
+      prewarmButton.title = allowed
+        ? "브로커에 프리웜 실행을 요청합니다. 실제 실행 여부와 원격 타이머 시작은 확인되지 않습니다."
+        : reason;
+      prewarmButton.setAttribute("aria-label", `${target?.displayName || id} pre-warm${allowed ? "" : ` disabled: ${reason}`}`);
+      prewarmButton.onclick = allowed ? () => window.triggerPrewarmWindow && window.triggerPrewarmWindow(id) : null;
     }
     const bar = $(`bar-${id}`);
     if (bar) {
@@ -380,17 +501,8 @@ function renderTokens() {
           track.appendChild(ticks);
         }
         const segments = id.endsWith("weekly") ? 7 : 5;
-        const stops = [];
-        for (let i = 1; i < segments; i++) {
-          const at = `${(100 * i) / segments}%`;
-          stops.push(
-            `transparent ${at}`,
-            `rgba(255, 255, 255, 0.55) ${at}`,
-            `rgba(255, 255, 255, 0.55) calc(${at} + 2px)`,
-            `transparent calc(${at} + 2px)`
-          );
-        }
-        ticks.style.background = `linear-gradient(90deg, ${stops.join(", ")})`;
+        ticks.dataset.segments = String(segments);
+        ticks.style.backgroundImage = buildGaugeTickGradient(segments);
         ticks.style.display = "";
       }
     } else if (bar) {
@@ -426,29 +538,6 @@ function renderTokens() {
   }
 
   renderPrewarmToolbar();
-
-  const targets = [
-    { id: "gemini-5h", prefix: "antigravity", weekly: "antigravityWeekly", label: "Gemini" },
-    { id: "opus-5h", prefix: "opus", weekly: "opusWeekly", label: "Claude" },
-    { id: "codex-5h", prefix: "codex", weekly: "codexWeekly", label: "ChatGPT" },
-  ];
-  if (window.__lastCcAutoPrewarm !== Math.floor(Date.now() / 60000)) {
-    for (const target of targets) {
-      const targetMode = getModelPrewarmMode(target.prefix);
-      if (targetMode === "click") continue;
-
-      const m = buildTokenMetric("5Hours", ts, target.prefix, `${target.prefix} 5Hours`, target.weekly);
-      if (m.canPrewarm) {
-        window.__lastCcAutoPrewarm = Math.floor(Date.now() / 60000);
-        window.triggerPrewarmWindow && window.triggerPrewarmWindow(target.id);
-        if (targetMode === "once") {
-          setModelPrewarmMode(target.prefix, "click");
-          renderPrewarmToolbar();
-          showToast(`${target.label} Once 프리웜이 실행되어 수동(Click) 모드로 복귀했습니다.`);
-        }
-      }
-    }
-  }
 
   const codexTag = $("codex-status-tag");
   if (codexTag) {
@@ -709,7 +798,12 @@ function renderMainAgent() {
         button("📋 설정 JSON 복사", "button secondary copy-claude-mcp"),
       );
     } else {
-      actions.append(button("📋 MCP 설정 JSON 복사", "button secondary copy-generic-mcp"));
+      const copyJsonButton = node("button", undefined, "button secondary copy-generic-mcp");
+      copyJsonButton.type = "button";
+      copyJsonButton.setAttribute("aria-label", "MCP 설정 JSON 복사");
+      copyJsonButton.title = "MCP 설정 JSON 복사";
+      copyJsonButton.append(node("span", "📋 MCP 설정 JSON 복사", "copy-json-full"), node("span", "⧉", "copy-json-short"));
+      actions.append(copyJsonButton);
     }
   }
 }
@@ -815,8 +909,9 @@ function renderRuns(runsData) {
   const countBadge = $("runs-active-count");
   if (!listTarget) return;
 
-  const runs = runsData?.runs || [];
-  const activeCount = runsData?.activeCount || 0;
+  const readState = classifyCollectionResponse({ response: runsData?.response, error: runsData?.error, key: "runs" });
+  const runs = Array.isArray(runsData?.response?.runs) ? runsData.response.runs : [];
+  const activeCount = runsData?.response?.activeCount || 0;
   if (countBadge) {
     countBadge.textContent = `${activeCount}개 실행중`;
     // "available" is the installed/available green — an active run is blue
@@ -825,6 +920,14 @@ function renderRuns(runsData) {
   }
 
   listTarget.replaceChildren();
+  if (["unsupported", "unavailable", "unselected"].includes(readState.kind)) {
+    const message = readState.kind === "unsupported" ? "현재 브로커가 실행 기록 API를 지원하지 않습니다." : readState.kind === "unselected" ? "워크스페이스를 선택하거나 경로를 입력하면 IDE 실행 기록을 볼 수 있습니다." : "실행 기록을 불러오지 못했습니다.";
+    listTarget.append(node("div", `${message} ${readState.message}`.trim(), "empty-card api-read-state"));
+    return;
+  }
+  if (readState.kind === "partial") {
+    listTarget.append(node("div", `일부 실행 기록을 읽지 못했습니다: ${readState.message}`, "api-read-warning"));
+  }
   if (!runs.length) {
     listTarget.append(node("div", "기록된 워크스페이스 에이전트 실행이 없습니다.", "empty-card"));
     return;
@@ -881,12 +984,34 @@ function renderLocalLlmMetrics(metricsData) {
   const summary = $("local-metrics-summary");
   if (!tbody) return;
 
-  const metrics = metricsData?.metrics || [];
+  const readState = classifyCollectionResponse({ response: metricsData?.response, error: metricsData?.error, key: "metrics" });
+  const metrics = Array.isArray(metricsData?.response?.metrics) ? metricsData.response.metrics : [];
   if (summary) {
-    summary.textContent = `총 ${metrics.length}건 기록`;
+    summary.textContent = readState.kind === "empty" || readState.kind === "available" || readState.kind === "partial"
+      ? `총 ${metrics.length}건 기록${readState.kind === "partial" ? " · 일부 오류" : ""}`
+      : readState.kind === "unsupported" ? "지원되지 않음" : "조회 실패";
   }
 
   tbody.replaceChildren();
+  if (["unsupported", "unavailable", "unselected"].includes(readState.kind)) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 8;
+    td.className = "api-read-state";
+    td.textContent = `${readState.kind === "unsupported" ? "현재 브로커가 로컬 LLM 지표 API를 지원하지 않습니다." : readState.kind === "unselected" ? "워크스페이스를 선택하거나 경로를 입력하면 IDE 로컬 LLM 지표를 볼 수 있습니다." : "로컬 LLM 지표를 불러오지 못했습니다."} ${readState.message}`.trim();
+    tr.append(td);
+    tbody.append(tr);
+    return;
+  }
+  if (readState.kind === "partial") {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 8;
+    td.className = "api-read-warning";
+    td.textContent = `일부 지표를 읽지 못했습니다: ${readState.message}`;
+    tr.append(td);
+    tbody.append(tr);
+  }
   if (!metrics.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
@@ -977,7 +1102,7 @@ async function refreshAutoStart() {
 
 async function refresh({ force = false } = {}) {
   try {
-    await api("/health");
+    state.brokerHealth = await api("/health");
     setConnection("online", `브로커 정상 (${BROKER_PORT})`);
     state.lastSyncAt = new Date();
     if ($("status")) $("status").textContent = `브로커 정상 가동 중 (127.0.0.1:${BROKER_PORT})`;
@@ -987,23 +1112,49 @@ async function refresh({ force = false } = {}) {
     // the token state — bypassing the IDE's 5s TTL cache. Normal polling does
     // not force.
     const tokenPath = force ? "/v1/tokens/status?force=1" : "/v1/tokens/status";
-    const [capRes, taskRes, appRes, tokenRes, runsRes, metricsRes] = await Promise.all([
+    const runsUrl = workspaceReadUrl("/v1/runs");
+    const metricsUrl = workspaceReadUrl("/v1/metrics/local-llm");
+    const unselected = () => ({ error: Object.assign(new Error("워크스페이스를 선택하거나 경로를 입력하세요."), { kind: "unselected" }) });
+    const [capRes, taskRes, appRes, tokenRes, runsRes, metricsRes, workspacesRes, settingsRes] = await Promise.all([
       api("/v1/capabilities").catch(() => ({ capabilities: [] })),
       api("/v1/tasks").catch(() => ({ tasks: [] })),
       api("/v1/approvals").catch(() => ({ approvals: [] })),
       api(tokenPath).catch(() => ({ tokenStatus: null })),
-      api("/v1/runs").catch(() => ({ runs: [], activeCount: 0 })),
-      api("/v1/metrics/local-llm").catch(() => ({ metrics: [] })),
+      runsUrl ? api(runsUrl).then((response) => ({ response })).catch((error) => ({ error })) : Promise.resolve(unselected()),
+      metricsUrl ? api(metricsUrl).then((response) => ({ response })).catch((error) => ({ error })) : Promise.resolve(unselected()),
+      api("/v1/workspaces").catch(() => ({ workspaces: [] })),
+      api("/v1/settings/quota").catch((error) => ({ ok: false, error })),
     ]);
 
     if (Array.isArray(capRes.capabilities)) state.capabilities = capRes.capabilities;
     if (Array.isArray(taskRes.tasks)) state.tasks = taskRes.tasks;
     if (Array.isArray(appRes.approvals)) state.approvals = appRes.approvals;
+    state.workspaces = Array.isArray(workspacesRes.workspaces) ? workspacesRes.workspaces : [];
+    renderWorkspaceChoices();
+    if (settingsRes?.ok) applyQuotaSettingsEnvelope(settingsRes);
 
     if (tokenRes && tokenRes.tokenStatus) {
       state.previousTokenStatus = state.tokenStatus;
       state.tokenStatus = tokenRes.tokenStatus;
-      checkTokenFullNotification(state.previousTokenStatus, state.tokenStatus);
+      if (state.brokerHealth?.capabilities?.includes("quota.notifications.claim")) {
+        try {
+          const claim = await api("/v1/notifications/quota-refill", { method: "POST", body: JSON.stringify({}) });
+          if (claim.ok && Array.isArray(claim.notifications) && claim.notifications.length) {
+            playFullChime();
+            for (const item of claim.notifications) {
+              showToast(`⚡ [100% 완충] ${item.message || item.title || item.window || item.model || item.id}`);
+              sendDesktopNotification("⚡ [Integrated Power] 100% 충전 완료", item.message || item.title || item.model || item.window || "쿼터가 100% 충전되었습니다.");
+            }
+          }
+        } catch (error) {
+          if (!state.quotaNotificationClaimWarningShown) {
+            state.quotaNotificationClaimWarningShown = true;
+            showToast(`쿼터 알림 확인 실패: ${error.message}`, true);
+          }
+        }
+      } else {
+        checkTokenFullNotification(state.previousTokenStatus, state.tokenStatus);
+      }
     }
 
     renderTokens();
@@ -1030,6 +1181,14 @@ function bindEvents() {
   // Sidebar navigation
   document.querySelectorAll(".nav-link").forEach((link) => {
     link.onclick = () => switchTab(link.dataset.section);
+  });
+  $("workspace-context-select")?.addEventListener("change", () => {
+    if ($("workspace-context-path")) $("workspace-context-path").value = "";
+    updateWorkspaceContextFromControls();
+  });
+  $("workspace-context-apply")?.addEventListener("click", updateWorkspaceContextFromControls);
+  $("workspace-context-path")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") updateWorkspaceContextFromControls();
   });
 
   // Quick nav buttons on home tab
@@ -1108,16 +1267,22 @@ function bindEvents() {
 
   // Notification Toggles (Quick and Settings)
   const syncNotifyToggles = (checked) => {
+    const previous = state.notifyOnFullTokens;
     state.notifyOnFullTokens = checked;
-    localStorage.setItem("ip_notify_full_tokens", String(checked));
+    state.quotaSettings.notifyOnFull = checked;
     if ($("token-notify-quick-toggle")) $("token-notify-quick-toggle").checked = checked;
     if ($("setting-token-notify-toggle")) $("setting-token-notify-toggle").checked = checked;
     if (checked) {
       requestNotificationPermission();
-      showToast("토큰 100% 완충 시 알림이 켜졌습니다.");
-    } else {
-      showToast("토큰 100% 완충 시 알림이 꺼졌습니다.");
     }
+    void saveQuotaSettings({ message: checked ? "토큰 100% 완충 시 알림이 켜졌습니다." : "토큰 100% 완충 시 알림이 꺼졌습니다." }).then((saved) => {
+      if (!saved && state.notifyOnFullTokens === checked) {
+        state.notifyOnFullTokens = previous;
+        state.quotaSettings.notifyOnFull = previous;
+        if ($("token-notify-quick-toggle")) $("token-notify-quick-toggle").checked = previous;
+        if ($("setting-token-notify-toggle")) $("setting-token-notify-toggle").checked = previous;
+      }
+    });
   };
 
   if ($("token-notify-quick-toggle")) {
@@ -1175,7 +1340,7 @@ function bindEvents() {
   const taskbarToggle = $("setting-taskbar-toggle");
   const isTauriShell = () => {
     try {
-      return Boolean(window.__TAURI__ && getCurrentWindow());
+      return isTauri() && Boolean(getCurrentWindow());
     } catch {
       return false;
     }
@@ -1832,20 +1997,40 @@ const testExternalProvider = async () => {
 };
 
 let pollTimer = null;
+let pollTimerInterval = state.pollInterval;
 function setPollInterval(ms) {
+  const previous = state.pollInterval;
   state.pollInterval = ms;
-  localStorage.setItem("ip_poll_interval", String(ms));
+  state.quotaSettings.pollIntervalMs = ms;
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(refresh, ms);
-  showToast(`데이터 자동 갱신 주기가 ${ms / 1000}초로 설정되었습니다.`);
+  pollTimerInterval = ms;
+  void saveQuotaSettings({ message: `데이터 자동 갱신 주기가 ${ms / 1000}초로 설정되었습니다.` }).then((saved) => {
+    if (!saved && state.pollInterval === ms) {
+      state.pollInterval = previous;
+      state.quotaSettings.pollIntervalMs = previous;
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(refresh, previous);
+      pollTimerInterval = previous;
+      if ($("setting-poll-interval-select")) $("setting-poll-interval-select").value = String(previous);
+    }
+  });
 }
 
 function getModelPrewarmMode(prefix) {
-  return normalizePrewarmMode(localStorage.getItem(`ip_prewarm_mode_${prefix}`) || localStorage.getItem("ip_prewarm_mode") || "click");
+  return state.quotaSettings.prewarmModes[prefix] || "click";
 }
 
 function setModelPrewarmMode(prefix, mode) {
-  localStorage.setItem(`ip_prewarm_mode_${prefix}`, mode);
+  const previous = state.quotaSettings.prewarmModes[prefix];
+  state.quotaSettings = { ...state.quotaSettings, prewarmModes: { ...state.quotaSettings.prewarmModes, [prefix]: mode }, prewarmMode: prefix === "antigravity" ? mode : state.quotaSettings.prewarmMode };
+  renderPrewarmToolbar();
+  void saveQuotaSettings({ message: `${prefix} 프리웜 모드가 '${mode}'(으)로 설정되었습니다.` }).then((saved) => {
+    if (!saved && state.quotaSettings.prewarmModes[prefix] === mode) {
+      state.quotaSettings.prewarmModes[prefix] = previous || "click";
+      renderPrewarmToolbar();
+    }
+  });
 }
 
 function renderPrewarmToolbar() {
@@ -1886,8 +2071,6 @@ function renderPrewarmToolbar() {
       btn.title = `${t.label} - ${m.title}`;
       btn.onclick = () => {
         setModelPrewarmMode(t.key, m.key);
-        renderPrewarmToolbar();
-        showToast(`${t.label} 프리웜 모드가 '${m.key}'(으)로 변경되었습니다.`);
       };
       options.append(btn);
     }
@@ -1902,29 +2085,19 @@ function renderPrewarmToolbar() {
 window.triggerPrewarmWindow = async function(windowId) {
   const prefix = prefixOf[windowId] || windowId;
   if (!prefix) return;
-  const ts = state.tokenStatus || {};
-  const weeklyPrefix = prefix === "antigravity" ? "antigravityWeekly" : prefix === "opus" ? "opusWeekly" : "codexWeekly";
-  const m = buildTokenMetric("5Hours", ts, prefix, `${prefix} 5Hours`, weeklyPrefix);
-  if (!m.canPrewarm) {
-    showToast(`${prefix} 5시간 윈도우가 100% 충전 상태가 아니거나 주간 한도가 소진되어 프리웜할 수 없습니다.`);
-    return;
-  }
   showToast(`${prefix} 5시간 윈도우 프리웜 요청 중...`);
   try {
-    const res = await fetch(`${API}/prewarm`, {
+    const res = await api("/v1/tokens/prewarm", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: prefix, immediateAbort: true }),
+      body: JSON.stringify({ model: prefix, manual: true, idempotencyKey: crypto.randomUUID(), expectedSettingsRevision: state.quotaSettingsRevision }),
     });
-    if (res.ok) {
-      showToast(`${prefix} 5시간 충전 타이머가 활성화되었습니다.`);
-      void refresh();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      showToast(data.error || `${prefix} 프리웜 건너뜀 (${res.status})`);
-    }
+    if (res.status === "dispatched") showToast(`${prefix} 프리웜 요청을 브로커에 전달했습니다${res.timerConfirmed ? " (타이머 확인됨)" : " (타이머 시작은 확인되지 않음)"}.`);
+    else if (res.status === "duplicate") showToast(`${prefix} 프리웜 요청은 이미 처리되었습니다.`);
+    else if (res.ok && !res.status) showToast(`${prefix} 구형 브로커가 요청을 접수했습니다. 실행 여부와 타이머 시작은 확인되지 않습니다.`);
+    else showToast(`${prefix} 프리웜 ${res.status === "failed" ? "실패" : "건너뜀"}: ${res.error || "브로커에서 실행하지 않았습니다."}`, res.status === "failed");
+    void refresh();
   } catch (err) {
-    showToast(`${prefix} 프리웜 신호 전송 완료 (충전 타이머 시작)`);
+    showToast(`${prefix} 프리웜 요청 실패: ${err.message}`, true);
   }
 };
 
@@ -1941,7 +2114,7 @@ renderExternalProviders();
 // Restore the persisted taskbar/tray preference (Tauri shell only).
 if (localStorage.getItem("ip_taskbar_visible") === "false") {
   try {
-    if (window.__TAURI__) {
+    if (isTauri()) {
       const win = getCurrentWindow();
       void win.setSkipTaskbar(true).then(() => win.hide()).catch(() => {});
     }

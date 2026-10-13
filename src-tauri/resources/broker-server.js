@@ -6,9 +6,15 @@ const path = require("path");
 const os = require("os");
 const http = require("http");
 const bundledModule = path.join(__dirname, "broker-out", "broker");
-const workspaceModule = path.resolve(__dirname, "..", "vscode-extension", "out", "broker");
-const brokerModule = process.env.INTEGRATED_POWER_BROKER_MODULE || (fs.existsSync(bundledModule) ? bundledModule : workspaceModule);
-const { createPreferredEventLedger, IntegratedPowerBroker, createFirstWaveAdapters, startBrokerServer } = require(brokerModule);
+const { resolveBrokerPackage } = require("./scripts/broker-package.js");
+const brokerPackage = resolveBrokerPackage({
+  modulePath: process.env.INTEGRATED_POWER_BROKER_MODULE,
+  sourcePath: process.env.INTEGRATED_POWER_BROKER_SOURCE,
+  packagePath: process.env.INTEGRATED_POWER_BROKER_PACKAGE || bundledModule,
+});
+const { prepareCanonicalBrokerLedger, configureBrokerAssets } = require("./scripts/canonical-broker-state.js");
+configureBrokerAssets(brokerPackage, process.env);
+const { IntegratedPowerBroker, createFirstWaveAdapters, startBrokerServer } = require(brokerPackage.entrypointPath);
 
 // The VSIX storagePath module defines the canonical product state root. Keep
 // the standalone Tauri launcher on that same root so tasks, approvals and
@@ -22,11 +28,12 @@ const port = Number.parseInt(process.env.INTEGRATED_POWER_BROKER_PORT || "37241"
     console.log(JSON.stringify({ service: "integrated-power-broker", port, bind: "127.0.0.1", attached: true }));
     return;
   }
-  const broker = new IntegratedPowerBroker(createPreferredEventLedger(path.join(stateRoot, "events.enc.jsonl")), createFirstWaveAdapters());
+  const { ledger } = await prepareCanonicalBrokerLedger(brokerPackage, stateRoot);
+  const broker = new IntegratedPowerBroker(ledger, createFirstWaveAdapters());
   await broker.initialize();
   let server;
   try {
-    server = await startBrokerServer(broker, Number.isFinite(port) && port > 0 ? port : 37241);
+    server = await startBrokerServer(broker, Number.isFinite(port) && port > 0 ? port : 37241, { stateRoot });
   } catch (error) {
     if (!isAddressInUse(error) || !(await probeBroker(port))) throw error;
     console.log(JSON.stringify({ service: "integrated-power-broker", port, bind: "127.0.0.1", attached: true }));

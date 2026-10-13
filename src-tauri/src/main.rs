@@ -12,6 +12,7 @@ use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindow, W
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const CANONICAL_BROKER_PORT: &str = "37241";
 
 struct BrokerProcess(Mutex<Option<Child>>);
 struct PositionFile(PathBuf);
@@ -28,12 +29,28 @@ fn main() {
                     .unwrap_or_else(|| "node".to_string());
                 let mut command = Command::new(node);
                 command.arg(&launcher);
+                // The bundled frontend and CSP use the canonical product port.
+                // Do not inherit an isolated-test override into the installed app.
+                command.env("INTEGRATED_POWER_BROKER_PORT", CANONICAL_BROKER_PORT);
                 if let Some(module) = launcher
                     .parent()
                     .map(|parent| parent.join("broker-out").join("broker"))
                 {
                     if module.exists() {
-                        command.env("INTEGRATED_POWER_BROKER_MODULE", module);
+                        command.env("INTEGRATED_POWER_BROKER_MODULE", &module);
+                        let asset_root = module.join("resources");
+                        if asset_root.is_dir() {
+                            command.env("INTEGRATED_POWER_BROKER_ASSET_ROOT", &asset_root);
+                            let local_scripts = asset_root
+                                .join("assets")
+                                .join("ip-orchestrator-plugin")
+                                .join("skills")
+                                .join("ip-orchestrator")
+                                .join("scripts");
+                            if local_scripts.is_dir() {
+                                command.env("INTEGRATED_POWER_LOCAL_SCRIPTS", local_scripts);
+                            }
+                        }
                     }
                 }
 
