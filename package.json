@@ -15,7 +15,8 @@
     "mcp": "node ./mcp-server.js",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "test:compact-ui": "node ./scripts/test-desktop-compact-ui.js"
+    "test:compact-ui": "node ./scripts/test-desktop-compact-ui.js",
+    "test:hub-e2e": "node ./scripts/test-hub-e2e.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.5.0",

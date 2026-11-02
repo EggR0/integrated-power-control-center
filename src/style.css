@@ -1043,4 +1043,221 @@ input:checked + .slider:before {
   .code-box, code, .log-content, .muted, p, label, h2, h3, strong, .setting-label, .setting-val { display: block; min-width: 0; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
   .settings-card > *, .settings-card .setting-item > *, .settings-card .setting-item > div > * { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
   .toast { left: 4px; right: 4px; bottom: 4px; padding: 6px; overflow-wrap: anywhere; }
+
+  .hub-ecosystem-card,
+  .hub-todo-card,
+  .hub-playbooks-card,
+  #settings-vault-todo-card {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 6px !important;
+  }
+
+  .hub-connectors-grid,
+  .hub-ecosystem-grid,
+  .hub-playbooks-grid,
+  .hub-todo-items-list,
+  .hub-todo-container,
+  .hub-playbooks-container,
+  .hub-ecosystem-matrix,
+  .hub-vaults-section {
+    grid-template-columns: minmax(0, 1fr) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .hub-connector-card,
+  .hub-todo-card,
+  .hub-playbook-card,
+  .hub-ecosystem-card,
+  .hub-playbooks-card,
+  .hub-vaults-section,
+  #card-connected-ecosystem,
+  #card-hub-todo-gate,
+  #card-tasks-todo-gate,
+  #card-category-playbooks,
+  #settings-vault-todo-card {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 3px !important;
+    box-sizing: border-box !important;
+  }
+
+  .hub-clarification-box,
+  .hub-todo-card div[style*="background:#052e16"],
+  .hub-todo-card div[style*="background:#172554"],
+  .hub-todo-card div[style*="background:#4c0519"],
+  .hub-todo-card div[style*="margin-top:12px"],
+  .hub-todo-card div[style*="margin-top: 12px"] {
+    padding: 2px !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .hub-ecosystem-card div,
+  .hub-todo-card div,
+  .hub-playbooks-card div,
+  .hub-connector-card div,
+  .hub-vaults-section div,
+  .hub-playbook-card div,
+  #settings-vault-todo-card div {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  .hub-connector-card div[style*="display:flex"],
+  .hub-connector-card div[style*="display: flex"],
+  .hub-todo-card div[style*="display:flex"],
+  .hub-todo-card div[style*="display: flex"],
+  .hub-playbook-card div[style*="display:flex"],
+  .hub-playbook-card div[style*="display: flex"],
+  .hub-vaults-section div[style*="display:flex"],
+  .hub-vaults-section div[style*="display: flex"],
+  .hub-ecosystem-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    gap: 4px !important;
+  }
+
+  .hub-connector-card span,
+  .hub-todo-card span,
+  .hub-playbook-card span,
+  .hub-vaults-section span {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    display: inline-block !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  .pipeline-quick-actions,
+  .todo-heading-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 3px !important;
+  }
+
+  .pipeline-quick-actions .button,
+  .todo-heading-actions .button,
+  .hub-btn-clarify,
+  .hub-btn-dispatch,
+  .hub-btn-approve {
+    display: block !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    white-space: normal !important;
+    padding: 3px 2px !important;
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-all !important;
+    box-sizing: border-box !important;
+  }
+
+  .hub-clarify-input,
+  #setting-vault-path,
+  #setting-todo-path {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .hub-playbook-card div[style*="grid-template-columns"],
+  .hub-playbook-card div[style*="display:grid"],
+  .hub-playbook-card div[style*="display: grid"],
+  .hub-playbooks-container div[style*="grid-template-columns"],
+  .hub-playbooks-container div[style*="display:grid"],
+  .hub-playbooks-container div[style*="display: grid"],
+  .hub-ecosystem-matrix div[style*="grid-template-columns"],
+  .hub-ecosystem-matrix div[style*="display:grid"],
+  .hub-ecosystem-matrix div[style*="display: grid"],
+  .hub-todo-container div[style*="grid-template-columns"],
+  .hub-todo-container div[style*="display:grid"],
+  .hub-todo-container div[style*="display: grid"],
+  .view-section div[style*="grid-template-columns"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .hub-playbook-card ul,
+  .hub-playbook-card li,
+  .hub-todo-card ul,
+  .hub-todo-card li {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding-left: 8px !important;
+    box-sizing: border-box !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  .hub-btn-add-rule {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    padding: 3px !important;
+    font-size: 10px !important;
+  }
+
+  .hub-ecosystem-card *,
+  .hub-todo-card *,
+  .hub-playbooks-card *,
+  #settings-vault-todo-card *,
+  .hub-ecosystem-matrix * {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    box-sizing: border-box !important;
+  }
 }
+
+/* Hub Unified Communications Control Center styles */
+.hub-ecosystem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.hub-playbooks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.pipeline-quick-actions,
+.todo-heading-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .hub-ecosystem-grid,
+  .hub-playbooks-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+

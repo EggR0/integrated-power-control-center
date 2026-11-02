@@ -36,6 +36,48 @@ const settings = {
   ok: true, revision: 1, initialized: true, source: "fixture", errors: [],
   settings: { pollIntervalMs: 60000, notifyOnFull: true, prewarmModes: { antigravity: "click", opus: "click", codex: "click" }, notifications: Object.fromEntries(["antigravityGemini5h", "antigravityGeminiWeekly", "antigravityClaude5h", "antigravityClaudeWeekly", "chatgpt5h", "chatgptWeekly", "claude5h", "claudeWeekly"].map((key) => [key, true])) },
 };
+const hubOverview = {
+  schemaVersion: 1,
+  config: { customVaultPath: "", customTodoFilePath: "", disabledConnectors: [], autoSyncMarkdown: true },
+  ecosystem: {
+    scannedAt: new Date().toISOString(), platform: "win32",
+    connectors: [
+      { id: "openclaw", label: "OpenClaw (Discord/Telegram Bridge)", category: "messenger", state: "ready", protocol: "acp", enabled: true, details: "ACP 127.0.0.1:37241" },
+      { id: "hermes-agent", label: "Hermes Agent (NousResearch)", category: "harness", state: "ready", protocol: "openai-v1", enabled: true, details: "Reasoning harness" },
+      { id: "opencodex", label: "OpenCodex (Writer-Critic Harness)", category: "harness", state: "ready", protocol: "cli", enabled: true, details: "Codex CLI" },
+      { id: "obsidian-local-rest-api", label: "Obsidian Local REST API", category: "knowledge_vault", state: "ready", protocol: "rest", endpoint: "https://127.0.0.1:27124", enabled: true },
+      { id: "docling", label: "Docling / MinerU (OCR Ingestion)", category: "document_media", state: "ready", protocol: "cli", enabled: true },
+    ],
+    vaults: [
+      { path: "D:\\obsidian\\vault", name: "vault", source: "obsidian_registry", installedPlugins: ["smart-connections", "obsidian-linter"], enabledPlugins: ["smart-connections", "obsidian-linter"] },
+    ],
+    activeTodoFilePath: "D:\\obsidian\\vault\\Todo.md",
+  },
+  todos: [
+    {
+      id: "todo-1", blockId: "^todo1", title: "통합 관제 테스트 작업", rawText: "- [ ] 통합 관제 테스트 작업",
+      status: "ready", domain: "core", privacyTier: "strictly_local", category: "coding", urgencyScore: 1, ambiguityScore: 0.1,
+      clarificationQuestions: [], contextNotes: [], allowManualCredit: false, originChannel: "dashboard",
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    },
+    {
+      id: "todo-2", blockId: "^todo2", title: "모호한 요청 검증", rawText: "- [?] 모호한 요청 검증",
+      status: "needs_clarification", domain: "private", privacyTier: "strictly_local", category: "research", urgencyScore: 2, ambiguityScore: 0.6,
+      clarificationQuestions: [{ id: "q1", question: "검증 대상 모델은 무엇입니까?", options: ["Gemini", "Codex", "Claude"] }],
+      contextNotes: [], allowManualCredit: true, originChannel: "markdown",
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    },
+  ],
+  playbooks: [
+    {
+      category: "coding", label: "소프트웨어 엔지니어링",
+      episodic: [{ id: "ep-1", summary: "UI 컴팩트 레이아웃 안정화", recordedAt: new Date().toISOString() }],
+      semantic: [{ id: "sem-1", preference: "No innerHTML", rationale: "XSS 방지 및 테스트 무결성", recordedAt: new Date().toISOString() }],
+      procedural: [{ id: "proc-1", trigger: "UI 컴포넌트 추가", rule: "120px 너비 회귀 테스트 필수", recordedAt: new Date().toISOString() }],
+      updatedAt: new Date().toISOString(),
+    },
+  ],
+};
 const prewarmRequests = [];
 let tokenFixtureMode = "normal";
 
@@ -70,6 +112,16 @@ const broker = http.createServer(async (request, response) => {
   else if (url.pathname === "/v1/tokens/prewarm") { if (request.method === "POST") prewarmRequests.push(body); result = { ok: true }; }
   else if (url.pathname === "/v1/autostart") result = { ok: true, enabled: false };
   else if (url.pathname === "/v1/logs") result = { ok: true, lines: [], path: "" };
+  else if (url.pathname === "/v1/hub/overview") result = hubOverview;
+  else if (url.pathname === "/v1/hub/ecosystem") result = hubOverview.ecosystem;
+  else if (url.pathname === "/v1/hub/todos") result = { todos: hubOverview.todos };
+  else if (url.pathname === "/v1/hub/playbooks") result = { playbooks: hubOverview.playbooks };
+  else if (url.pathname === "/v1/hub/config" && request.method === "GET") result = hubOverview.config;
+  else if (url.pathname === "/v1/hub/config" && (request.method === "PUT" || request.method === "POST")) result = { ...hubOverview.config, ...(body || {}) };
+  else if (url.pathname === "/v1/hub/ingest" && request.method === "POST") result = { ok: true, todo: { id: "todo-new", ...body } };
+  else if (url.pathname === "/v1/hub/todos/sync") result = { ok: true, synced: hubOverview.todos.length };
+  else if (url.pathname.match(/^\/v1\/hub\/todos\/[^/]+\/clarify$/)) result = { ok: true, todo: hubOverview.todos[1] };
+  else if (url.pathname.match(/^\/v1\/hub\/todos\/[^/]+\/dispatch$/)) result = { ok: true, taskId: "task-dispatched" };
   response.writeHead(200).end(JSON.stringify(result));
 });
 

@@ -22,6 +22,11 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
 import { classifyCollectionResponse } from "./api-read-state.mjs";
+import {
+  renderEcosystemMatrixHtml,
+  renderHubTodoListHtml,
+  renderPlaybooksHtml,
+} from "@shared/hub";
 
 // Broker base URL. 37241 is the canonical standalone port; during vite dev a
 // separate broker on another port can be attached with ?broker=<port> (dev-only
@@ -106,6 +111,12 @@ const state = {
   quotaSettingsInitialized: false,
   quotaSettings: { ...quotaSettings, prewarmModes: { ...quotaSettings.prewarmModes }, notifications: { ...quotaSettings.notifications } },
   brokerHealth: null,
+  hubOverview: null,
+  hubEcosystem: null,
+  hubTodos: [],
+  hubPlaybooks: [],
+  hubConfig: null,
+  hubError: null,
 };
 
 const defaults = [
@@ -1090,6 +1101,76 @@ function renderLocalLlmMetrics(metricsData) {
   }
 }
 
+function safeInjectHtml(container, html) {
+  if (!container) return;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  container.replaceChildren(...Array.from(doc.body.childNodes));
+}
+
+function renderHubEcosystem() {
+  const container = $("hub-ecosystem-container");
+  if (!container) return;
+  if (state.hubEcosystem) {
+    safeInjectHtml(container, renderEcosystemMatrixHtml(state.hubEcosystem));
+    const pill = $("ecosystem-summary-pill");
+    if (pill) {
+      const readyCount = (state.hubEcosystem.connectors || []).filter((c) => c.state === "ready").length;
+      pill.textContent = `${readyCount}개 준비됨`;
+      pill.className = `status-pill ${readyCount > 0 ? "status-ok" : "waiting"}`;
+    }
+  } else {
+    container.replaceChildren(node("div", state.hubError ? `생태계 진단 대기: ${state.hubError}` : "커넥터 상태를 진단하는 중…", "empty-card"));
+  }
+}
+
+function renderHubTodos() {
+  const hosts = [$("hub-todo-items-host"), $("hub-tasks-todo-items-host")].filter(Boolean);
+  if (!hosts.length) return;
+  const html = renderHubTodoListHtml(state.hubTodos);
+  for (const host of hosts) {
+    safeInjectHtml(host, html);
+  }
+}
+
+function renderHubPlaybooks() {
+  const container = $("hub-playbooks-host");
+  if (!container) return;
+  safeInjectHtml(container, renderPlaybooksHtml(state.hubPlaybooks));
+}
+
+function renderHubSettings() {
+  if (!state.hubConfig) return;
+  if ($("setting-vault-path") && document.activeElement !== $("setting-vault-path")) {
+    $("setting-vault-path").value = state.hubConfig.customVaultPath || "";
+  }
+  if ($("setting-todo-path") && document.activeElement !== $("setting-todo-path")) {
+    $("setting-todo-path").value = state.hubConfig.customTodoFilePath || "";
+  }
+  if ($("setting-todo-auto-sync")) {
+    $("setting-todo-auto-sync").checked = state.hubConfig.autoSyncMarkdown !== false;
+  }
+}
+
+async function refreshHub({ force = false } = {}) {
+  try {
+    const overview = await api(`/v1/hub/overview${force ? "?refresh=1" : ""}`);
+    if (overview && overview.schemaVersion === 1) {
+      state.hubOverview = overview;
+      state.hubConfig = overview.config;
+      state.hubEcosystem = overview.ecosystem;
+      state.hubTodos = overview.todos || [];
+      state.hubPlaybooks = overview.playbooks || [];
+      state.hubError = null;
+    }
+  } catch (error) {
+    state.hubError = error.message;
+  }
+  renderHubEcosystem();
+  renderHubTodos();
+  renderHubPlaybooks();
+  renderHubSettings();
+}
+
 async function refreshLogs() {
   try {
     const res = await api("/v1/logs?lines=160");
@@ -1127,7 +1208,7 @@ async function refresh({ force = false } = {}) {
     const runsUrl = workspaceReadUrl("/v1/runs");
     const metricsUrl = workspaceReadUrl("/v1/metrics/local-llm");
     const unselected = () => ({ error: Object.assign(new Error("워크스페이스를 선택하거나 경로를 입력하세요."), { kind: "unselected" }) });
-    const [capRes, taskRes, appRes, tokenRes, runsRes, metricsRes, workspacesRes, settingsRes] = await Promise.all([
+    const [capRes, taskRes, appRes, tokenRes, runsRes, metricsRes, workspacesRes, settingsRes, hubRes] = await Promise.all([
       api("/v1/capabilities").catch(() => ({ capabilities: [] })),
       api("/v1/tasks").catch(() => ({ tasks: [] })),
       api("/v1/approvals").catch(() => ({ approvals: [] })),
@@ -1136,6 +1217,7 @@ async function refresh({ force = false } = {}) {
       metricsUrl ? api(metricsUrl).then((response) => ({ response })).catch((error) => ({ error })) : Promise.resolve(unselected()),
       api("/v1/workspaces").catch(() => ({ workspaces: [] })),
       api("/v1/settings/quota").catch((error) => ({ ok: false, error })),
+      api(force ? "/v1/hub/overview?refresh=1" : "/v1/hub/overview").catch((error) => ({ ok: false, error })),
     ]);
 
     if (Array.isArray(capRes.capabilities)) state.capabilities = capRes.capabilities;
@@ -1144,6 +1226,17 @@ async function refresh({ force = false } = {}) {
     state.workspaces = Array.isArray(workspacesRes.workspaces) ? workspacesRes.workspaces : [];
     renderWorkspaceChoices();
     if (settingsRes?.ok) applyQuotaSettingsEnvelope(settingsRes);
+
+    if (hubRes && !hubRes.error && hubRes.schemaVersion === 1) {
+      state.hubOverview = hubRes;
+      state.hubConfig = hubRes.config;
+      state.hubEcosystem = hubRes.ecosystem;
+      state.hubTodos = hubRes.todos || [];
+      state.hubPlaybooks = hubRes.playbooks || [];
+      state.hubError = null;
+    } else if (hubRes?.error) {
+      state.hubError = hubRes.error.message || String(hubRes.error);
+    }
 
     if (tokenRes && tokenRes.tokenStatus) {
       state.previousTokenStatus = state.tokenStatus;
@@ -1184,6 +1277,10 @@ async function refresh({ force = false } = {}) {
     renderTasks();
     renderRuns(runsRes);
     renderLocalLlmMetrics(metricsRes);
+    renderHubEcosystem();
+    renderHubTodos();
+    renderHubPlaybooks();
+    renderHubSettings();
     if (state.activeTab === "logs") void refreshLogs();
   } catch (error) {
     state.previousTokenStatus = state.tokenStatus;
@@ -1198,6 +1295,10 @@ async function refresh({ force = false } = {}) {
     renderHomeStats();
     renderAgents();
     renderTasks();
+    renderHubEcosystem();
+    renderHubTodos();
+    renderHubPlaybooks();
+    renderHubSettings();
   }
 }
 
@@ -1255,7 +1356,202 @@ function bindEvents() {
         showToast("설정 복사 실패: " + err.message, true);
       }
     }
+
+    // Hub Clarify button
+    const clarifyBtn = e.target.closest(".hub-btn-clarify");
+    if (clarifyBtn) {
+      const todoId = clarifyBtn.dataset.hubClarifyId;
+      const card = clarifyBtn.closest(".hub-todo-card");
+      const inputs = card ? card.querySelectorAll(".hub-clarify-input") : [];
+      const answers = [];
+      inputs.forEach((input) => {
+        const qId = input.dataset.questionId;
+        const val = input.value.trim();
+        if (qId && val) answers.push({ id: qId, answer: val });
+      });
+      if (answers.length === 0) {
+        showToast("최소 1개 이상의 질문에 답변을 입력하세요.", true);
+        return;
+      }
+      try {
+        await api(`/v1/hub/todos/${encodeURIComponent(todoId)}/clarify`, {
+          method: "POST",
+          body: JSON.stringify({ answers }),
+        });
+        await refreshHub({ force: true });
+        showToast("답변이 저장되고 자율 배당 요건이 재평가되었습니다.");
+      } catch (err) {
+        showToast(`답변 저장 실패: ${err.message}`, true);
+      }
+    }
+
+    // Hub Dispatch button
+    const dispatchBtn = e.target.closest(".hub-btn-dispatch");
+    if (dispatchBtn) {
+      const todoId = dispatchBtn.dataset.hubDispatchId;
+      try {
+        showToast("작업을 브로커에 자율 배당하는 중…");
+        await api(`/v1/hub/todos/${encodeURIComponent(todoId)}/dispatch`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        await refreshHub({ force: true });
+        await refresh();
+        showToast("🚀 작업이 브로커에 배당되었습니다.");
+      } catch (err) {
+        showToast(`배당 실패: ${err.message}`, true);
+      }
+    }
+
+    // Hub Approve button
+    const approveBtn = e.target.closest(".hub-btn-approve");
+    if (approveBtn) {
+      const todoId = approveBtn.dataset.hubApproveId;
+      try {
+        await api(`/v1/hub/todos/${encodeURIComponent(todoId)}/dispatch`, {
+          method: "POST",
+          body: JSON.stringify({ action: "approve" }),
+        });
+        await refreshHub({ force: true });
+        showToast("승인이 완료되었습니다.");
+      } catch (err) {
+        showToast(`승인 처리 실패: ${err.message}`, true);
+      }
+    }
+
+    // Pipeline quick action buttons
+    const pipelineBtn = e.target.closest(".pipeline-btn, [data-pipeline]");
+    if (pipelineBtn && pipelineBtn.dataset.pipeline) {
+      const p = pipelineBtn.dataset.pipeline;
+      const presets = {
+        research: { title: "리서치 및 웹 탐색", goal: "요구사항에 대한 심층 조사 및 사실 검증을 수행합니다." },
+        coding: { title: "코드 구현 및 검증", goal: "모듈 단위 기능 구현 및 테스트 검증을 진행합니다." },
+        ingestion: { title: "문서 및 미디어 수집", goal: "Docling/MinerU를 활용하여 문서를 표준 마크다운으로 파싱합니다." },
+        org: { title: "정리 및 중복 파일 정리", goal: "czkawka 및 볼트 린터를 실행하여 중복을 검사하고 정리합니다." },
+      };
+      const preset = presets[p];
+      if (preset && $("title") && $("goal")) {
+        $("title").value = preset.title;
+        $("goal").value = preset.goal;
+        showToast(`⚡ ${p.toUpperCase()} 파이프라인 템플릿이 입력되었습니다.`);
+      }
+    }
   });
+
+  // Hub Todo & Settings Action Buttons
+  if ($("hub-todo-refresh-btn")) {
+    $("hub-todo-refresh-btn").onclick = async () => {
+      showToast("통합 할 일 목록을 갱신하는 중…");
+      await refreshHub({ force: true });
+      showToast("통합 할 일 목록이 갱신되었습니다.");
+    };
+  }
+
+  const handleTodoSync = async () => {
+    showToast("마크다운 할 일 파일을 동기화하는 중…");
+    try {
+      await api("/v1/hub/todos/sync", { method: "POST", body: "{}" });
+      await refreshHub({ force: true });
+      showToast("마크다운 할 일 동기화가 완료되었습니다.");
+    } catch (err) {
+      showToast(`동기화 실패: ${err.message}`, true);
+    }
+  };
+  if ($("hub-todo-sync-btn")) $("hub-todo-sync-btn").onclick = handleTodoSync;
+  if ($("hub-tasks-todo-sync-btn")) $("hub-tasks-todo-sync-btn").onclick = handleTodoSync;
+
+  const handleNewTodo = async () => {
+    const title = window.prompt("새 할 일 제목 또는 마크다운 항목 (- [ ] ...):");
+    if (!title || !title.trim()) return;
+    try {
+      await api("/v1/hub/ingest", {
+        method: "POST",
+        body: JSON.stringify({ title: title.trim(), rawText: title.trim(), originChannel: "dashboard" }),
+      });
+      await refreshHub({ force: true });
+      showToast("새 할 일이 등록되었습니다.");
+    } catch (err) {
+      showToast(`할 일 추가 실패: ${err.message}`, true);
+    }
+  };
+  if ($("hub-todo-new-btn")) $("hub-todo-new-btn").onclick = handleNewTodo;
+  if ($("hub-tasks-todo-new-btn")) $("hub-tasks-todo-new-btn").onclick = handleNewTodo;
+
+  if ($("btn-detect-vaults")) {
+    $("btn-detect-vaults").onclick = async () => {
+      showToast("옵시디언 볼트를 자동 탐색 중…");
+      try {
+        const eco = await api("/v1/hub/ecosystem?refresh=1");
+        const resultsBox = $("vault-discovery-results");
+        if (resultsBox) {
+          resultsBox.style.display = "";
+          resultsBox.replaceChildren();
+          const vaults = eco?.vaults || [];
+          if (vaults.length === 0) {
+            const emptyP = document.createElement("p");
+            emptyP.style.color = "#94a3b8";
+            emptyP.style.fontSize = "12px";
+            emptyP.textContent = "감지된 Obsidian 볼트가 없습니다.";
+            resultsBox.appendChild(emptyP);
+          } else {
+            const listDiv = document.createElement("div");
+            listDiv.style.display = "flex";
+            listDiv.style.flexDirection = "column";
+            listDiv.style.gap = "6px";
+            for (const v of vaults) {
+              const row = document.createElement("div");
+              row.style.display = "flex";
+              row.style.justifyContent = "space-between";
+              row.style.alignItems = "center";
+              row.style.background = "#0f172a";
+              row.style.padding = "6px 10px";
+              row.style.borderRadius = "4px";
+              row.style.border = "1px solid #1e293b";
+
+              const span = document.createElement("span");
+              span.style.fontSize = "12px";
+              span.style.color = "#f8fafc";
+              span.textContent = `${v.name} (${v.path})`;
+
+              const chooseBtn = document.createElement("button");
+              chooseBtn.className = "button secondary compact-btn";
+              chooseBtn.type = "button";
+              chooseBtn.textContent = "선택";
+              chooseBtn.onclick = () => {
+                if ($("setting-vault-path")) $("setting-vault-path").value = v.path;
+                showToast(`볼트 경로가 '${v.name}'(으)로 설정되었습니다.`);
+              };
+
+              row.append(span, chooseBtn);
+              listDiv.appendChild(row);
+            }
+            resultsBox.appendChild(listDiv);
+          }
+        }
+        showToast(`볼트 탐색 완료 (${eco?.vaults?.length || 0}개 발견)`);
+      } catch (err) {
+        showToast(`볼트 탐색 실패: ${err.message}`, true);
+      }
+    };
+  }
+
+  if ($("btn-save-vault-settings")) {
+    $("btn-save-vault-settings").onclick = async () => {
+      const customVaultPath = $("setting-vault-path")?.value?.trim() || "";
+      const customTodoFilePath = $("setting-todo-path")?.value?.trim() || "";
+      const autoSyncMarkdown = $("setting-todo-auto-sync")?.checked !== false;
+      try {
+        await api("/v1/hub/config", {
+          method: "PUT",
+          body: JSON.stringify({ customVaultPath, customTodoFilePath, autoSyncMarkdown }),
+        });
+        await refreshHub({ force: true });
+        showToast("💾 옵시디언 볼트 및 통합 할 일 저장소 설정이 저장되었습니다.");
+      } catch (err) {
+        showToast(`설정 저장 실패: ${err.message}`, true);
+      }
+    };
+  }
 
   // Refresh buttons
   if ($("connection-refresh")) $("connection-refresh").onclick = () => void refresh();
@@ -2137,6 +2433,10 @@ renderHomeStats();
 renderAgents();
 renderTasks();
 renderExternalProviders();
+renderHubEcosystem();
+renderHubTodos();
+renderHubPlaybooks();
+renderHubSettings();
 // Restore the persisted taskbar/tray preference (Tauri shell only).
 if (localStorage.getItem("ip_taskbar_visible") === "false") {
   try {

@@ -398,6 +398,38 @@
             </div>
           </div>
 
+          <!-- Component 1: Connected Ecosystem Matrix -->
+          <div class="card hub-ecosystem-card" id="card-connected-ecosystem" style="margin-top: 16px;">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">통신 통합 관제 생태계 (Unified Ecosystem)</p>
+                <h2>연동 생태계 커넥터 현황</h2>
+              </div>
+              <span id="ecosystem-summary-pill" class="status-pill status-ok">스캔 대기</span>
+            </div>
+            <div id="hub-ecosystem-container" class="hub-ecosystem-grid">
+              <div class="empty-card">커넥터 상태를 진단하는 중…</div>
+            </div>
+          </div>
+
+          <!-- Component 2: Unified Todo & Clarification Gate -->
+          <div class="card hub-todo-card" id="card-hub-todo-gate" style="margin-top: 16px;">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">옵시디언 연동 인박스 & 모호성 검증 관문</p>
+                <h2>통합 할 일 목록 및 자율 대행 관문</h2>
+              </div>
+              <div class="todo-heading-actions">
+                <button id="hub-todo-refresh-btn" class="button secondary compact-btn" type="button">↻ 새로고침</button>
+                <button id="hub-todo-sync-btn" class="button secondary compact-btn" type="button">🔄 마크다운 동기화</button>
+                <button id="hub-todo-new-btn" class="button primary compact-btn" type="button">+ 새 할 일</button>
+              </div>
+            </div>
+            <div id="hub-todo-items-host" class="hub-todo-items-list">
+              <div class="empty-card">통합 할 일 목록을 불러오는 중…</div>
+            </div>
+          </div>
+
           <div class="quick-nav-row">
             <button class="button secondary quick-nav-btn" data-target="tokens">⛁ 실시간 토큰 쿼터 확인 →</button>
             <button class="button secondary quick-nav-btn" data-target="agents">◈ 에이전트 전체 상태 보기 →</button>
@@ -428,6 +460,7 @@
         <!-- VIEW 4: TASKS -->
         <section id="view-tasks" class="view-section">
           <div class="tasks-layout">
+            <div class="tasks-composer-column" style="display:flex; flex-direction:column; gap:12px; min-width:0; max-width:100%;">
             <div class="task-composer card">
               <div class="section-heading compact">
                 <h2>새 작업 작성</h2>
@@ -446,6 +479,43 @@
               <div class="composer-actions">
                 <span id="selected-agent-hint" class="muted">메인 에이전트로 작업을 시작합니다.</span>
                 <button id="create" class="button primary">작업 시작</button>
+              </div>
+            </div>
+
+              <!-- Component 2: Unified Todo & Clarification Gate (Tasks View Mirror) -->
+              <div class="card hub-todo-card" id="card-tasks-todo-gate">
+                <div class="section-heading compact">
+                  <div>
+                    <p class="eyebrow">자율 대행 및 관문 검증</p>
+                    <h2>통합 할 일 인박스</h2>
+                  </div>
+                  <div class="todo-heading-actions">
+                    <button id="hub-tasks-todo-sync-btn" class="button secondary compact-btn" type="button">🔄 동기화</button>
+                    <button id="hub-tasks-todo-new-btn" class="button primary compact-btn" type="button">+ 새 할 일</button>
+                  </div>
+                </div>
+                <div id="hub-tasks-todo-items-host" class="hub-todo-items-list">
+                  <div class="empty-card">통합 할 일 목록을 불러오는 중…</div>
+                </div>
+              </div>
+
+              <!-- Component 3: Category Playbooks & Execution Pipelines -->
+              <div class="card hub-playbooks-card" id="card-category-playbooks">
+                <div class="section-heading compact">
+                  <div>
+                    <p class="eyebrow">반복 지식 및 선호 규칙 (Memory Playbooks)</p>
+                    <h2>카테고리별 플레이북 및 실행 파이프라인</h2>
+                  </div>
+                  <div class="pipeline-quick-actions">
+                    <button class="button secondary compact-btn pipeline-btn" type="button" data-pipeline="research">⚡ Research</button>
+                    <button class="button secondary compact-btn pipeline-btn" type="button" data-pipeline="coding">⚡ Coding</button>
+                    <button class="button secondary compact-btn pipeline-btn" type="button" data-pipeline="ingestion">⚡ Ingestion</button>
+                    <button class="button secondary compact-btn pipeline-btn" type="button" data-pipeline="org">⚡ Clean/Org</button>
+                  </div>
+                </div>
+                <div id="hub-playbooks-host" class="hub-playbooks-grid">
+                  <div class="empty-card">카테고리 플레이북을 불러오는 중…</div>
+                </div>
               </div>
             </div>
 
@@ -672,6 +742,36 @@
                   <button id="btn-settings-chatgpt" class="button secondary copy-chatgpt-mcp">📋 ChatGPT URL 복사</button>
                 </div>
               </div>
+            </div>
+
+            <!-- Component 4: Portable Vault & Todo Settings -->
+            <div class="card settings-card" id="settings-vault-todo-card">
+              <h3>🗂️ 옵시디언 볼트 및 통합 할 일(Todo) 저장소</h3>
+              <p class="muted" style="margin-top:4px;">
+                개인 지식 베이스(Obsidian Vault) 및 마크다운 할 일 목록의 경로를 설정합니다. 비워두면 시스템 기본 경로(%LOCALAPPDATA%\IntegratedPower\state\todos.md)와 레지스트리 감지 볼트를 사용합니다.
+              </p>
+              <div class="setting-item">
+                <label style="font-size:11px; color:#94a3b8; display:block; margin-bottom:4px;">옵시디언 볼트 경로
+                  <div style="display:flex; gap:8px; margin-top:4px; flex-wrap:wrap;">
+                    <input type="text" id="setting-vault-path" placeholder="자동 감지 (Obsidian 볼트 폴더 경로)" style="flex:1; min-width:120px;" />
+                    <button id="btn-detect-vaults" class="button secondary compact-btn" type="button">🔍 볼트 자동 탐색</button>
+                  </div>
+                </label>
+                <label style="font-size:11px; color:#94a3b8; display:block; margin-top:10px;">마크다운 할 일(Todo) 파일 경로
+                  <input type="text" id="setting-todo-path" placeholder="자동 감지 (Obsidian 볼트 또는 기본 상태 폴더 Todo.md)" style="width:100%; margin-top:4px;" />
+                </label>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap; gap:8px;">
+                  <label class="switch-toggle-label" style="font-size:12px; color:#cbd5e1; display:flex; align-items:center; gap:8px;">
+                    <label class="switch-toggle">
+                      <input type="checkbox" id="setting-todo-auto-sync" checked />
+                      <span class="slider round"></span>
+                    </label>
+                    <span>마크다운 파일 변경 시 자동 동기화</span>
+                  </label>
+                  <button id="btn-save-vault-settings" class="button primary" type="button">💾 설정 저장</button>
+                </div>
+              </div>
+              <div id="vault-discovery-results" class="vault-discovery-box" style="display:none; margin-top:10px;"></div>
             </div>
 
             <!-- Storage & Encryption -->
