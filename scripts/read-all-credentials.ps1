@@ -141,35 +141,55 @@ if ($results.accounts.Count -eq 0) {
     }
 }
 
-# 3. Check Antigravity IDE state.vscdb for active IDE account
-$vscdbPath = "$env:APPDATA\Antigravity\User\globalStorage\state.vscdb"
-if (Test-Path $vscdbPath) {
+# 3. Check Antigravity IDE state for active IDE account and live tokens
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$extractScript = Join-Path $scriptDir "extract-ide-auth.py"
+if (Test-Path $extractScript) {
     try {
-        $nodeScript = "const sqlite3 = require('sqlite3'); const db = new sqlite3.Database(process.argv[1], sqlite3.OPEN_READONLY, (err) => { if (err) return; db.get(\`SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus'\`, (err, row) => { if (row) { try { console.log(JSON.parse(row.value).email || ''); } catch(e){} } db.close(); }); });"
-        # Fallback to python
-        $ideEmail = (python -c "import sqlite3, json; conn=sqlite3.connect(r'$vscdbPath'); c=conn.cursor(); c.execute('SELECT value FROM ItemTable WHERE key=\'antigravityAuthStatus\''); r=c.fetchone(); print(json.loads(r[0]).get('email', '') if r else '')" 2>$null).Trim()
-        if ($ideEmail) {
-            $results.activeIdeAccount = $ideEmail
-            if (-not $results.accounts.ContainsKey($ideEmail)) {
-                # Attempt to read specific credential
+        $extractedRaw = python $extractScript 2>$null
+        if ($extractedRaw) {
+            $authObj = $extractedRaw | ConvertFrom-Json
+            if ($authObj -and $authObj.email) {
+                $results.activeIdeAccount = $authObj.email
+                $ideEmail = $authObj.email
+                
+                # Check if specific target exists in Credential Manager
                 $specCred = Read-Cred "gemini:antigravity:$ideEmail"
                 if ($specCred -and $specCred.Value) {
                     try {
                         $j = $specCred.Value | ConvertFrom-Json
-                        $results.accounts[$ideEmail] = @{
-                            email = $ideEmail
-                            source = "credential-manager-specific"
-                            target = "gemini:antigravity:$ideEmail"
-                            token = $j.token
-                            auth_method = $j.auth_method
+                        if ($j.token) {
+                            $results.accounts[$ideEmail] = @{
+                                email = $ideEmail
+                                source = "credential-manager"
+                                target = "gemini:antigravity:$ideEmail"
+                                token = $j.token
+                                auth_method = $j.auth_method
+                            }
                         }
                     } catch {}
-                } else {
+                }
+                
+                if (-not $results.accounts.ContainsKey($ideEmail) -or -not $results.accounts[$ideEmail].token) {
+                    $tokenObj = @{
+                        access_token = $authObj.access_token
+                        refresh_token = $authObj.refresh_token
+                        token_type = "Bearer"
+                        expiry = (Get-Date).AddHours(1).ToString("o")
+                    }
                     $results.accounts[$ideEmail] = @{
                         email = $ideEmail
                         source = "antigravity-ide-active"
                         target = "gemini:antigravity:$ideEmail"
+                        token = $tokenObj
+                        auth_method = "consumer"
                     }
+                    $credPayload = @{
+                        token = $tokenObj
+                        auth_method = "consumer"
+                        id_token_email = $ideEmail
+                    } | ConvertTo-Json -Compress
+                    $null = Write-Cred "gemini:antigravity:$ideEmail" "antigravity" $credPayload
                 }
             }
         }

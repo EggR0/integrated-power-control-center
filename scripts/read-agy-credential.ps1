@@ -1,7 +1,7 @@
-$ErrorActionPreference = 'Stop'
 param(
     [string]$Target = 'gemini:antigravity'
 )
+$ErrorActionPreference = 'Stop'
 
 if (-not ('AgyCredentialReader.NativeMethods' -as [type])) {
     Add-Type -TypeDefinition @'
