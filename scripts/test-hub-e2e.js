@@ -39,6 +39,7 @@ async function main() {
     // a) Ecosystem Discovery
     console.log("[E2E] Testing (a) Ecosystem Discovery...");
     const ecosystem = await requestJson(port, "GET", "/v1/hub/ecosystem");
+    assert.ok(path.resolve(ecosystem.activeTodoFilePath).startsWith(path.resolve(stateRoot)), "activeTodoFilePath must stay inside isolated stateRoot: " + ecosystem.activeTodoFilePath);
     assert.ok(Array.isArray(ecosystem.connectors), "connectors must be an array");
     const connectorIds = ecosystem.connectors.map((c) => c.id);
     console.log(`[E2E] Discovered connectors: ${connectorIds.join(", ")}`);

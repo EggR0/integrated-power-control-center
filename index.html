@@ -1,64 +1,88 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="titanium">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Integrated Power - AI 관제 센터</title>
+    <title>Integrated Power - 통신 통합 관제소</title>
   </head>
   <body>
-    <div id="app-shell" class="manager-shell">
-      <aside id="sidebar" class="sidebar">
-        <div class="brand">
-          <span class="brand-mark">✦</span>
-          <span>Integrated Power</span>
+    <div id="app-shell" class="manager-shell liquid-window" data-theme="titanium">
+      <!-- Desktop Window Titlebar (macOS / Desktop Chrome style) -->
+      <div class="window-titlebar">
+        <div class="traffic-lights">
+          <span class="traffic-dot traffic-red"></span>
+          <span class="traffic-dot traffic-yellow"></span>
+          <span class="traffic-dot traffic-green"></span>
         </div>
-        <nav aria-label="주 메뉴">
-          <button id="nav-tokens" class="nav-link active" data-section="tokens" aria-label="토큰 상태">
-            <span class="nav-icon">⛁</span><span>토큰 상태</span>
-          </button>
-          <button id="nav-home" class="nav-link" data-section="home" aria-label="홈">
-            <span class="nav-icon">⌂</span><span>홈</span>
-          </button>
-          <button id="nav-agents" class="nav-link" data-section="agents" aria-label="에이전트">
-            <span class="nav-icon">◈</span><span>에이전트</span>
-          </button>
-          <button id="nav-tasks" class="nav-link" data-section="tasks" aria-label="작업">
-            <span class="nav-icon">☷</span><span>작업</span>
-          </button>
-          <button id="nav-logs" class="nav-link log-button" data-section="logs" aria-label="로그">
-            <span class="nav-icon">▤</span><span>로그</span>
-          </button>
-          <button id="nav-settings" class="nav-link" data-section="settings" aria-label="설정">
-            <span class="nav-icon">⚙</span><span>설정</span>
-          </button>
-        </nav>
-        <div class="sidebar-footer" id="broker-footer">v0.9.22 · loopback 37241</div>
-      </aside>
+        <div class="titlebar-center">
+          <span class="titlebar-title">IPCC · 통신 통합 관제소</span>
+          <span id="broker-footer" class="titlebar-version-badge">v0.12.0 · loopback 37241</span>
+        </div>
+        <div class="titlebar-right">
+          <span id="titlebar-broker-status" class="titlebar-status-text">
+            <span class="pulse-dot-emerald"></span> REST 127.0.0.1:37241
+          </span>
+          <span class="titlebar-divider">|</span>
+          <span id="titlebar-gpu-status" class="titlebar-gpu-text">RTX 3090 Ready</span>
+        </div>
+      </div>
 
+      <!-- Top Floating Liquid Glass Omni-Command / Status Capsule Bar -->
+      <header class="topbar-liquid-capsule-bar">
+        <div class="topbar-capsule-left">
+          <div class="liquid-capsule connection-badge">
+            <span id="connection-dot" class="connection-dot offline"></span>
+            <span id="connection-label">브로커 확인 중…</span>
+          </div>
+          <div id="active-agent-capsule" class="liquid-capsule active-agent-pill">
+            <span class="active-agent-icon">◈</span>
+            <span id="top-agent-label">에이전트 준비 중</span>
+          </div>
+        </div>
+
+        <form id="omni-command-form" class="liquid-capsule omni-command-form">
+          <div class="omni-icon-box">✦</div>
+          <input id="command-input" type="text" placeholder="할 일 추가 또는 에이전트에게 지시... (Enter로 등록)" />
+          <button type="submit" class="apple-tactile omni-submit-btn">지시</button>
+        </form>
+
+        <div class="topbar-capsule-right">
+          <label class="workspace-context">IDE 워크스페이스
+            <select id="workspace-context-select" aria-label="IDE 워크스페이스"></select>
+            <input id="workspace-context-path" aria-label="워크스페이스 경로 직접 입력" placeholder="또는 경로 입력" />
+            <button id="workspace-context-apply" class="button secondary compact-btn" type="button">적용</button>
+          </label>
+          <!-- Theme Switcher -->
+          <div class="liquid-capsule theme-switcher-capsule" title="테마 변경">
+            <button id="theme-btn-titanium" class="theme-btn active apple-tactile" type="button" title="스모크 티타늄 (다크 리퀴드 글래스)">
+              <span class="theme-swatch swatch-titanium"></span>
+            </button>
+            <button id="theme-btn-pearl" class="theme-btn apple-tactile" type="button" title="펄 화이트 (라이트 리퀴드 글래스)">
+              <span class="theme-swatch swatch-pearl"></span>
+            </button>
+            <button id="theme-btn-cashmere" class="theme-btn apple-tactile" type="button" title="웜 캐시미어 (소프트 실버 스톤)">
+              <span class="theme-swatch swatch-cashmere"></span>
+            </button>
+          </div>
+          <button id="connection-refresh" class="icon-button apple-tactile" title="새로고침" aria-label="새로고침">↻</button>
+        </div>
+      </header>
+
+      <!-- Main Scrollable Content View -->
       <main id="main-view" class="content">
-        <header class="topbar">
+        <div class="page-header-row">
           <div>
             <p id="page-eyebrow" class="eyebrow">AI 쿼터 및 토큰 실시간 관제</p>
             <h1 id="page-title">AI 모델 쿼터 현황 및 리셋 주기</h1>
           </div>
-          <div class="topbar-actions">
-            <label class="workspace-context">IDE 워크스페이스
-              <select id="workspace-context-select" aria-label="IDE 워크스페이스"></select>
-              <input id="workspace-context-path" aria-label="워크스페이스 경로 직접 입력" placeholder="또는 경로 입력" />
-              <button id="workspace-context-apply" class="button secondary compact-btn" type="button">적용</button>
-            </label>
-            <div class="connection-badge">
-              <span id="connection-dot" class="connection-dot offline"></span>
-              <span id="connection-label">브로커 연결 확인 중…</span>
-            </div>
-            <button id="connection-refresh" class="icon-button" title="새로고침" aria-label="새로고침">↻</button>
-          </div>
-        </header>
+        </div>
 
-        <!-- VIEW 1: TOKEN STATUS (DEFAULT VIEW) -->
+        <!-- ============================================== -->
+        <!-- VIEW 1: TOKEN STATUS (DEFAULT VIEW)            -->
+        <!-- ============================================== -->
         <section id="view-tokens" class="view-section active">
           <!-- Quick Status & Alert Banner -->
-          <div class="token-header-banner card">
+          <div class="token-header-banner card liquid-card">
             <div class="banner-left">
               <span class="pulse-icon">⚡</span>
               <div>
@@ -80,19 +104,25 @@
                   <span class="slider round"></span>
                 </label>
               </div>
-              <button id="token-refresh-btn" class="button primary">↻ 쿼터 즉시 새로고침</button>
-              <button id="provider-visibility-reset" class="button" title="숨긴 제공자 블록을 모두 다시 표시">모두 표시</button>
+              <button id="token-refresh-btn" class="button primary apple-tactile">↻ 쿼터 즉시 새로고침</button>
+              <button id="provider-visibility-reset" class="button apple-tactile" title="숨긴 제공자 블록을 모두 다시 표시">모두 표시</button>
             </div>
+          </div>
+
+          <!-- Account & Provider Selector (Multi-Account + GCP agya) -->
+          <div class="account-selector-bar card liquid-card" id="account-selector-bar">
+            <span class="account-selector-label">공급원:</span>
+            <div id="account-pill-container" class="account-pill-container"></div>
           </div>
 
           <!-- Provider-Grouped Capacity & Token Grid -->
           <div class="token-providers-grid">
             <!-- Group 1: Antigravity IDE -->
-            <div class="card provider-card" id="provider-antigravity">
+            <div class="card provider-card liquid-card" id="provider-antigravity">
               <div class="provider-header">
                 <span class="provider-pill">Antigravity IDE</span>
                 <span class="provider-state-tag">Idle</span>
-                <button class="provider-toggle" data-provider="antigravity" title="이 블록 표시/숨김">숨기기</button>
+                <button class="provider-toggle apple-tactile" data-provider="antigravity" title="이 블록 표시/숨김">숨기기</button>
               </div>
               <div class="provider-models">
                 <!-- Gemini -->
@@ -107,7 +137,7 @@
                     </div>
                     <div class="quota-window-footer">
                       <p id="reset-gemini-5h" class="window-countdown">· Waiting for quota</p>
-                      <button id="prewarm-gemini-5h" class="prewarm-action" type="button" data-prewarm-window="antigravity" data-window-id="gemini-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
+                      <button id="prewarm-gemini-5h" class="prewarm-action apple-tactile" type="button" data-prewarm-window="antigravity" data-window-id="gemini-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
                     </div>
                     <div class="progress-track"><div id="bar-gemini-5h" class="progress-fill gemini" style="width: 0%;"></div></div>
                     <p id="tokens-gemini-5h" class="window-tokens"></p>
@@ -124,7 +154,7 @@
                 </div>
 
                 <!-- Argon 4 -->
-                <div class="model-block" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06);">
+                <div class="model-block" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--glass-border-subtle);">
                   <div class="model-name-row">
                     <h4>Gemini 4 Argon</h4>
                   </div>
@@ -146,7 +176,7 @@
                     </div>
                     <div class="quota-window-footer">
                       <p id="reset-argon-weekly" class="window-countdown">· Waiting for quota</p>
-                      <button id="prewarm-argon-weekly" class="prewarm-action" type="button" data-prewarm-window="argon" data-window-id="argon-weekly"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
+                      <button id="prewarm-argon-weekly" class="prewarm-action apple-tactile" type="button" data-prewarm-window="argon" data-window-id="argon-weekly"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
                     </div>
                     <div class="progress-track"><div id="bar-argon-weekly" class="progress-fill gemini" style="width: 0%;"></div></div>
                     <p id="tokens-argon-weekly" class="window-tokens"></p>
@@ -154,7 +184,7 @@
                 </div>
 
                 <!-- Claude -->
-                <div class="model-block" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06);">
+                <div class="model-block" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--glass-border-subtle);">
                   <div class="model-name-row">
                     <h4>Claude</h4>
                   </div>
@@ -165,7 +195,7 @@
                     </div>
                     <div class="quota-window-footer">
                       <p id="reset-opus-5h" class="window-countdown">· Waiting for quota</p>
-                      <button id="prewarm-opus-5h" class="prewarm-action" type="button" data-prewarm-window="opus" data-window-id="opus-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
+                      <button id="prewarm-opus-5h" class="prewarm-action apple-tactile" type="button" data-prewarm-window="opus" data-window-id="opus-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
                     </div>
                     <div class="progress-track"><div id="bar-opus-5h" class="progress-fill opus" style="width: 0%;"></div></div>
                     <p id="tokens-opus-5h" class="window-tokens"></p>
@@ -184,11 +214,11 @@
             </div>
 
             <!-- Group 2: OpenAI (ChatGPT + Codex) -->
-            <div class="card provider-card" id="provider-openai">
+            <div class="card provider-card liquid-card" id="provider-openai">
               <div class="provider-header">
                 <span class="provider-pill">OpenAI</span>
                 <span id="openai-status-tag" class="provider-state-tag">구독: Plus</span>
-                <button class="provider-toggle" data-provider="openai" title="이 블록 표시/숨김">숨기기</button>
+                <button class="provider-toggle apple-tactile" data-provider="openai" title="이 블록 표시/숨김">숨기기</button>
               </div>
               <div class="provider-models">
                 <div class="subscription-pool-banner">
@@ -207,7 +237,7 @@
                     </div>
                     <div class="quota-window-footer">
                       <p id="reset-codex-5h" class="window-countdown">· Waiting for quota</p>
-                      <button id="prewarm-codex-5h" class="prewarm-action" type="button" data-prewarm-window="codex" data-window-id="codex-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
+                      <button id="prewarm-codex-5h" class="prewarm-action apple-tactile" type="button" data-prewarm-window="codex" data-window-id="codex-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
                     </div>
                     <div class="progress-track"><div id="bar-codex-5h" class="progress-fill codex" style="width: 0%;"></div></div>
                     <p id="tokens-codex-5h" class="window-tokens"></p>
@@ -224,7 +254,7 @@
                 </div>
 
                 <!-- Codex (에이전트 예산) -->
-                <div class="model-block" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);">
+                <div class="model-block" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--glass-border-subtle);">
                   <div class="model-name-row flex-between">
                     <h4>Codex (에이전트 자동화)</h4>
                     <span id="codex-status-tag" class="provider-state-tag" style="font-size:10px; padding:2px 6px;">Idle</span>
@@ -235,72 +265,70 @@
             </div>
 
             <!-- Group 3: Anthropic Claude -->
-            <div class="card provider-card" id="provider-claude">
+            <div class="card provider-card liquid-card" id="provider-claude">
               <div class="provider-header">
                 <span class="provider-pill">Anthropic Claude</span>
                 <span id="claude-status-tag" class="provider-state-tag">No data</span>
-                <button class="provider-toggle" data-provider="claude" title="이 블록 표시/숨김">숨기기</button>
+                <button class="provider-toggle apple-tactile" data-provider="claude" title="이 블록 표시/숨김">숨기기</button>
               </div>
               <div class="provider-models">
                 <div class="model-block">
                   <div class="model-name-row">
                     <h4>Claude Usage (API · CLI · Cowork)</h4>
                   </div>
-                  <p class="panel-caption" style="font-size:11px; color:#94a3b8; margin: 4px 0 8px 0;">로컬 메타데이터 로그 및 API 토큰 사용량</p>
+                  <p class="panel-caption" style="font-size:11px; color:var(--text-muted); margin: 4px 0 8px 0;">로컬 메타데이터 로그 및 API 토큰 사용량</p>
                   <div class="usage-mini-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;">
-                    <div style="background:#0f172a; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.04);">
-                      <span style="font-size:11px; color:#94a3b8;">Today</span>
-                      <div id="claude-today-tokens" style="font-weight:700; font-size:14px; color:#e2e8f0;">0 <span style="font-size:10px; color:#64748b;">tokens</span></div>
-                      <div style="font-size:10px; color:#94a3b8; margin-top:2px;">과금: <span id="claude-today-billable">0</span></div>
+                    <div style="background:var(--glass-surface-subtle); padding:8px; border-radius:10px; border:1px solid var(--glass-border-subtle);">
+                      <span style="font-size:11px; color:var(--text-muted);">Today</span>
+                      <div id="claude-today-tokens" style="font-weight:700; font-size:14px; color:var(--text-main);">0 <span style="font-size:10px; color:var(--text-subtle);">tokens</span></div>
+                      <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">과금: <span id="claude-today-billable">0</span></div>
                     </div>
-                    <div style="background:#0f172a; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.04);">
-                      <span style="font-size:11px; color:#94a3b8;">7 Days</span>
-                      <div id="claude-7d-tokens" style="font-weight:700; font-size:14px; color:#e2e8f0;">0 <span style="font-size:10px; color:#64748b;">tokens</span></div>
-                      <div style="font-size:10px; color:#94a3b8; margin-top:2px;">이벤트: <span id="claude-7d-events">0건</span></div>
+                    <div style="background:var(--glass-surface-subtle); padding:8px; border-radius:10px; border:1px solid var(--glass-border-subtle);">
+                      <span style="font-size:11px; color:var(--text-muted);">7 Days</span>
+                      <div id="claude-7d-tokens" style="font-weight:700; font-size:14px; color:var(--text-main);">0 <span style="font-size:10px; color:var(--text-subtle);">tokens</span></div>
+                      <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">이벤트: <span id="claude-7d-events">0건</span></div>
                     </div>
                   </div>
-                  <div class="usage-source-row" style="margin-top:10px; font-size:11px; color:#94a3b8; display:flex; justify-content:space-between;">
+                  <div class="usage-source-row" style="margin-top:10px; font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between;">
                     <span>Sources:</span>
-                    <strong id="claude-sources-text" style="color:#cbd5e1; font-weight:500;">No Claude events</strong>
+                    <strong id="claude-sources-text" style="color:var(--text-main); font-weight:500;">No Claude events</strong>
                   </div>
-                  <div class="usage-source-row" style="margin-top:4px; font-size:11px; color:#94a3b8; display:flex; justify-content:space-between;">
+                  <div class="usage-source-row" style="margin-top:4px; font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between;">
                     <span>Last used:</span>
-                    <strong id="claude-last-used" style="color:#cbd5e1; font-weight:500;">Waiting for data</strong>
+                    <strong id="claude-last-used" style="color:var(--text-main); font-weight:500;">Waiting for data</strong>
                   </div>
                 </div>
               </div>
             </div>
 
             <!-- Group 4: Local LLM -->
-            <div class="card provider-card" id="provider-local">
+            <div class="card provider-card liquid-card" id="provider-local">
               <div class="provider-header">
                 <span class="provider-pill">Local LLM</span>
                 <span id="local-llm-status-tag" class="provider-state-tag">Offline</span>
-                <button class="provider-toggle" data-provider="local" title="이 블록 표시/숨김">숨기기</button>
+                <button class="provider-toggle apple-tactile" data-provider="local" title="이 블록 표시/숨김">숨기기</button>
               </div>
               <div class="provider-models">
                 <div id="gpu-status-container" class="gpu-status-list">
                   <!-- Dynamically populated multi-GPU cards -->
                 </div>
-                <div class="local-compute-footer" style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#94a3b8;">
-                  <div>가동 모델: <strong id="local-loaded-model" style="color:#38bdf8;">—</strong></div>
+                <div class="local-compute-footer" style="margin-top:12px; padding-top:10px; border-top:1px solid var(--glass-border-subtle); font-size:11px; color:var(--text-muted);">
+                  <div>가동 모델: <strong id="local-loaded-model" style="color:var(--accent-amber);">—</strong></div>
                   <div>엔드포인트: <span id="local-endpoint-health">동기화 대기 중…</span></div>
                 </div>
               </div>
             </div>
 
-            <!-- Group 5: External providers (user-registered HTTP endpoints).
-                 Cards are appended to #external-providers-host by renderExternalProviders()
-                 (DOM API only — no innerHTML). -->
+            <!-- Group 5: External providers -->
             <div id="external-providers-host" class="token-providers-grid" style="display:contents;">
-              <button id="external-providers-toggle" class="card external-providers-empty" style="display:none; grid-column:1/-1; text-align:center;">
+              <button id="external-providers-toggle" class="card external-providers-empty apple-tactile" style="display:none; grid-column:1/-1; text-align:center;">
                 ＋ 외부 쿼터 provider 추가 — 설정 탭에서 HTTP 엔드포인트를 등록하세요
               </button>
             </div>
           </div>
 
           <!-- Local LLM Benchmark & Execution History -->
-          <div class="card local-metrics-card" style="margin-top: 16px;">
+          <div class="card local-metrics-card liquid-card" style="margin-top: 16px;">
             <div class="section-heading compact">
               <div>
                 <p class="eyebrow">Execution Benchmarks</p>
@@ -311,7 +339,7 @@
             <div class="table-responsive" style="max-height: 220px; overflow-y: auto; margin-top: 10px;">
               <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
                 <thead>
-                  <tr style="border-bottom: 1px solid #334155; color: #94a3b8;">
+                  <tr style="border-bottom: 1px solid var(--glass-border-subtle); color: var(--text-muted);">
                     <th style="padding: 6px 8px;">시간</th>
                     <th style="padding: 6px 8px;">작업명</th>
                     <th style="padding: 6px 8px;">모델</th>
@@ -323,14 +351,14 @@
                   </tr>
                 </thead>
                 <tbody id="local-metrics-tbody">
-                  <tr><td colspan="8" style="padding: 12px; text-align: center; color: #64748b;">로컬 실행 기록을 불러오는 중…</td></tr>
+                  <tr><td colspan="8" style="padding: 12px; text-align: center; color: var(--text-subtle);">로컬 실행 기록을 불러오는 중…</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
 
           <!-- Activity & Reset Log -->
-          <div class="card token-activity-card">
+          <div class="card token-activity-card liquid-card">
             <div class="section-heading compact">
               <h3>실시간 토큰 쿼터 이벤트 & 리셋 로그</h3>
             </div>
@@ -340,9 +368,126 @@
           </div>
         </section>
 
-        <!-- VIEW 2: HOME -->
+        <!-- ============================================== -->
+        <!-- VIEW 2: HOME (DASHBOARD & SENTINEL)            -->
+        <!-- ============================================== -->
         <section id="view-home" class="view-section">
-          <div class="hero card">
+          <!-- Squircle Launcher Row + 2x2 연동 허브 Folder Tile -->
+          <section class="squircle-launchers-section">
+            <div class="squircle-grid">
+              <!-- Launcher 1: 에이전트 -->
+              <button class="liquid-squircle apple-tactile launcher-card" type="button" data-launcher="agents">
+                <div class="launcher-icon-box">◈</div>
+                <span class="launcher-title">에이전트</span>
+                <span class="launcher-desc">Codex · Gemini</span>
+              </button>
+              <!-- Launcher 2: 옵시디언 -->
+              <button class="liquid-squircle apple-tactile launcher-card" type="button" data-launcher="obsidian">
+                <div class="launcher-icon-box">◬</div>
+                <span class="launcher-title">옵시디언</span>
+                <span class="launcher-desc">Todo.md 연동</span>
+              </button>
+              <!-- Launcher 3: 연동 허브 (2x2 Mini-Glyph Folder Tile) -->
+              <button id="launcher-hub-folder" class="liquid-squircle apple-tactile launcher-card hub-folder-launcher" type="button" title="연동 허브 열기">
+                <div class="launcher-2x2-box">
+                  <span class="mini-glyph glyph-openclaw">O</span>
+                  <span class="mini-glyph glyph-hermes">H</span>
+                  <span class="mini-glyph glyph-docling">D</span>
+                  <span class="mini-glyph glyph-local">L</span>
+                </div>
+                <div class="launcher-title-row">
+                  <span class="launcher-title">연동 허브</span>
+                  <span class="launcher-live-dot"></span>
+                </div>
+                <span class="launcher-desc">오픈소스 6종</span>
+              </button>
+              <!-- Launcher 4: 플레이북 -->
+              <button class="liquid-squircle apple-tactile launcher-card" type="button" data-launcher="playbooks">
+                <div class="launcher-icon-box">📖</div>
+                <span class="launcher-title">플레이북</span>
+                <span class="launcher-desc">AECP 표준</span>
+              </button>
+              <!-- Launcher 5: 실행 기록 -->
+              <button class="liquid-squircle apple-tactile launcher-card" type="button" data-launcher="runs">
+                <div class="launcher-icon-box">⏱</div>
+                <span class="launcher-title">실행 기록</span>
+                <span class="launcher-desc">과거 이력</span>
+              </button>
+              <!-- Launcher 6: 관제 설정 -->
+              <button class="liquid-squircle apple-tactile launcher-card" type="button" data-launcher="settings">
+                <div class="launcher-icon-box">⚙</div>
+                <span class="launcher-title">설정</span>
+                <span class="launcher-desc">포트 · 쿼터</span>
+              </button>
+            </div>
+          </section>
+
+          <!-- 4-Ring Activity Widget & Live Quota Sentinel -->
+          <div class="liquid-card p-5 activity-rings-card">
+            <div class="card-header-row">
+              <div class="header-badge-group">
+                <div class="ring-status-dot"></div>
+                <h3 class="card-title">토큰 쿼터 &amp; 실시간 센티넬</h3>
+              </div>
+              <button id="btn-open-token-detail" class="pill-btn-subtle apple-tactile" type="button">토큰 상세 탭 ↗</button>
+            </div>
+            <div class="activity-rings-body">
+              <!-- SVG 4 Concentric Rings -->
+              <div class="rings-svg-wrapper">
+                <svg class="activity-rings-svg" viewBox="0 0 180 180">
+                  <!-- Ring 1 (Outer: Gemini, r=74) -->
+                  <circle class="ring-bg ring-gemini-bg" cx="90" cy="90" r="74" />
+                  <circle id="ring-gemini-fill" class="ring-fill ring-gemini-fill" cx="90" cy="90" r="74" stroke-dasharray="464.95" stroke-dashoffset="0" />
+
+                  <!-- Ring 2 (Middle-Outer: Claude/Opus, r=58) -->
+                  <circle class="ring-bg ring-opus-bg" cx="90" cy="90" r="58" />
+                  <circle id="ring-opus-fill" class="ring-fill ring-opus-fill" cx="90" cy="90" r="58" stroke-dasharray="364.42" stroke-dashoffset="0" />
+
+                  <!-- Ring 3 (Middle-Inner: Codex, r=42) -->
+                  <circle class="ring-bg ring-codex-bg" cx="90" cy="90" r="42" />
+                  <circle id="ring-codex-fill" class="ring-fill ring-codex-fill" cx="90" cy="90" r="42" stroke-dasharray="263.89" stroke-dashoffset="0" />
+
+                  <!-- Ring 4 (Inner: Argon 4, r=26) -->
+                  <circle class="ring-bg ring-argon-bg" cx="90" cy="90" r="26" />
+                  <circle id="ring-argon-fill" class="ring-fill ring-argon-fill" cx="90" cy="90" r="26" stroke-dasharray="163.36" stroke-dashoffset="0" />
+                </svg>
+                <div class="ring-center-content">
+                  <span class="ring-center-title">QUOTA</span>
+                  <span id="ring-center-status" class="ring-center-status">정상</span>
+                </div>
+              </div>
+              <!-- Ring Metric Badges List -->
+              <div class="rings-metrics-list">
+                <div class="ring-metric-row">
+                  <span class="metric-label"><span class="dot-gemini"></span>Gemini 2.5</span>
+                  <span id="ring-metric-gemini" class="metric-value font-mono">100%</span>
+                </div>
+                <div id="ring-row-argon" class="ring-metric-row">
+                  <span class="metric-label"><span class="dot-argon"></span>Argon 4</span>
+                  <span id="ring-metric-argon" class="metric-value font-mono">100%</span>
+                </div>
+                <div class="ring-metric-row">
+                  <span class="metric-label"><span class="dot-opus"></span>Claude 3.7</span>
+                  <span id="ring-metric-opus" class="metric-value font-mono">100%</span>
+                </div>
+                <div class="ring-metric-row">
+                  <span class="metric-label"><span class="dot-codex"></span>Codex / GPT</span>
+                  <span id="ring-metric-codex" class="metric-value font-mono">100%</span>
+                </div>
+                <div class="ring-metric-row vram-metric-row">
+                  <span class="metric-label">RTX 3090 VRAM</span>
+                  <span id="ring-metric-vram" class="metric-value font-mono">- / 24 GB</span>
+                </div>
+              </div>
+            </div>
+            <div class="card-footer-row">
+              <span class="rule-hint">규칙 202: 15% 미만 시 아키텍처 결정만 위임</span>
+              <button id="btn-quick-tokens-jump" class="apple-tactile button secondary compact-btn" type="button">쿼터 상세 보기 →</button>
+            </div>
+          </div>
+
+          <!-- Main Agent Hero Card -->
+          <div class="hero card liquid-card">
             <div class="hero-copy">
               <span class="hero-icon">◌</span>
               <div>
@@ -355,7 +500,7 @@
             </div>
           </div>
 
-          <div id="main-agent-card" class="agent-hero card">
+          <div id="main-agent-card" class="agent-hero card liquid-card">
             <div class="agent-heading">
               <div>
                 <p class="eyebrow">현재 선택된 에이전트</p>
@@ -367,29 +512,30 @@
             <div id="main-agent-actions" class="agent-quick-actions"></div>
           </div>
 
+          <!-- Stats Overview Cards -->
           <div class="stat-grid">
-            <div class="stat-card card">
+            <div class="stat-card card liquid-card">
               <div class="stat-icon">⚡</div>
               <div class="stat-info">
                 <span class="stat-label">브로커 서비스</span>
                 <strong id="stat-broker" class="stat-value">가동중 (37241)</strong>
               </div>
             </div>
-            <div class="stat-card card">
+            <div class="stat-card card liquid-card">
               <div class="stat-icon">🤖</div>
               <div class="stat-info">
                 <span class="stat-label">사용가능 에이전트</span>
                 <strong id="stat-agents" class="stat-value">- / 5개</strong>
               </div>
             </div>
-            <div class="stat-card card">
+            <div class="stat-card card liquid-card">
               <div class="stat-icon">📋</div>
               <div class="stat-info">
                 <span class="stat-label">진행 중인 작업</span>
                 <strong id="stat-tasks" class="stat-value">0건</strong>
               </div>
             </div>
-            <div class="stat-card card">
+            <div class="stat-card card liquid-card">
               <div class="stat-icon">🔐</div>
               <div class="stat-info">
                 <span class="stat-label">승인 대기 요청</span>
@@ -399,7 +545,7 @@
           </div>
 
           <!-- Component 1: Connected Ecosystem Matrix -->
-          <div class="card hub-ecosystem-card" id="card-connected-ecosystem" style="margin-top: 16px;">
+          <div class="card hub-ecosystem-card liquid-card" id="card-connected-ecosystem" style="margin-top: 16px;">
             <div class="section-heading compact">
               <div>
                 <p class="eyebrow">통신 통합 관제 생태계 (Unified Ecosystem)</p>
@@ -413,16 +559,16 @@
           </div>
 
           <!-- Component 2: Unified Todo & Clarification Gate -->
-          <div class="card hub-todo-card" id="card-hub-todo-gate" style="margin-top: 16px;">
+          <div class="card hub-todo-card liquid-card" id="card-hub-todo-gate" style="margin-top: 16px;">
             <div class="section-heading compact">
               <div>
                 <p class="eyebrow">옵시디언 연동 인박스 & 모호성 검증 관문</p>
                 <h2>통합 할 일 목록 및 자율 대행 관문</h2>
               </div>
               <div class="todo-heading-actions">
-                <button id="hub-todo-refresh-btn" class="button secondary compact-btn" type="button">↻ 새로고침</button>
-                <button id="hub-todo-sync-btn" class="button secondary compact-btn" type="button">🔄 마크다운 동기화</button>
-                <button id="hub-todo-new-btn" class="button primary compact-btn" type="button">+ 새 할 일</button>
+                <button id="hub-todo-refresh-btn" class="button secondary compact-btn apple-tactile" type="button">↻ 새로고침</button>
+                <button id="hub-todo-sync-btn" class="button secondary compact-btn apple-tactile" type="button">🔄 마크다운 동기화</button>
+                <button id="hub-todo-new-btn" class="button primary compact-btn apple-tactile" type="button">+ 새 할 일</button>
               </div>
             </div>
             <div id="hub-todo-items-host" class="hub-todo-items-list">
@@ -431,19 +577,21 @@
           </div>
 
           <div class="quick-nav-row">
-            <button class="button secondary quick-nav-btn" data-target="tokens">⛁ 실시간 토큰 쿼터 확인 →</button>
-            <button class="button secondary quick-nav-btn" data-target="agents">◈ 에이전트 전체 상태 보기 →</button>
-            <button class="button secondary quick-nav-btn" data-target="tasks">☷ 새 작업 작성하기 →</button>
-            <button class="button secondary quick-nav-btn" data-target="logs">▤ 브로커 로그 확인 →</button>
+            <button class="button secondary quick-nav-btn apple-tactile" data-target="tokens">⛁ 실시간 토큰 쿼터 확인 →</button>
+            <button class="button secondary quick-nav-btn apple-tactile" data-target="agents">◈ 에이전트 전체 상태 보기 →</button>
+            <button class="button secondary quick-nav-btn apple-tactile" data-target="tasks">☷ 새 작업 작성하기 →</button>
+            <button class="button secondary quick-nav-btn apple-tactile" data-target="logs">▤ 브로커 로그 확인 →</button>
           </div>
         </section>
 
-        <!-- VIEW 3: AGENTS -->
+        <!-- ============================================== -->
+        <!-- VIEW 3: AGENTS                                 -->
+        <!-- ============================================== -->
         <section id="view-agents" class="view-section">
           <div class="section-subhead">
             <div>
               <h2>연결된 에이전트 현황</h2>
-              <p class="muted">공급자별 설치 및 MCP 연동 상태를 실시간 진단합니다. 같은 제품의 여러 설치면(예: ChatGPT 앱·MCP, Claude 데스크톱·Cowork)은 하나로 묶어 표시됩니다.</p>
+              <p class="muted">공급자별 설치 및 MCP 연동 상태를 실시간 진단합니다. 같은 제품의 여러 설치면은 하나로 묶어 표시됩니다.</p>
             </div>
             <div class="legend-pills">
               <span class="status-pill available">사용가능</span>
@@ -457,41 +605,62 @@
           </div>
         </section>
 
-        <!-- VIEW 4: TASKS -->
+        <!-- ============================================== -->
+        <!-- VIEW 4: TASKS                                  -->
+        <!-- ============================================== -->
         <section id="view-tasks" class="view-section">
-          <div class="tasks-layout">
-            <div class="tasks-composer-column" style="display:flex; flex-direction:column; gap:12px; min-width:0; max-width:100%;">
-            <div class="task-composer card">
-              <div class="section-heading compact">
-                <h2>새 작업 작성</h2>
-              </div>
+          <!-- Single Liquid Glass Top Ingest Capsule -->
+          <form id="task-ingest-form" class="liquid-capsule task-ingest-capsule">
+            <div class="ingest-icon-box">＋</div>
+            <input id="task-input" type="text" placeholder="새 할 일 또는 에이전트 지시 입력... (Enter로 허브에 등록)" />
+            <button type="submit" class="apple-tactile button primary compact-btn">등록</button>
+          </form>
+
+          <!-- Collapsible Manual Agent Dispatch Disclosure Drawer -->
+          <details class="card liquid-card manual-task-drawer">
+            <summary class="drawer-summary apple-tactile">
+              <span class="drawer-title">⚡ 수동 에이전트 직접 지시 (고급)</span>
+              <span class="drawer-chevron">▾</span>
+            </summary>
+            <div class="drawer-content">
               <div class="form-grid">
                 <label>작업 제목
-                  <input id="title" value="Integrated Power 작업" />
+                  <input id="title" placeholder="작업 제목 (선택)" value="" />
                 </label>
                 <label>작업공간 경로
                   <input id="workspace" placeholder="선택 사항" />
                 </label>
               </div>
               <label class="form-full">목표 및 실행 명령
-                <textarea id="goal">현재 작업 상태를 확인하고 필요한 에이전트에 위임합니다.</textarea>
+                <textarea id="goal" placeholder="목표 및 실행 명령을 입력하세요..."></textarea>
               </label>
               <div class="composer-actions">
                 <span id="selected-agent-hint" class="muted">메인 에이전트로 작업을 시작합니다.</span>
-                <button id="create" class="button primary">작업 시작</button>
+                <button id="create" class="button primary apple-tactile">작업 시작</button>
               </div>
             </div>
+          </details>
 
+          <!-- Segmented Filter Bar -->
+          <div class="segmented-filter-bar">
+            <div class="liquid-capsule segmented-controls" role="tablist">
+              <button id="filter-tasks-active" class="segmented-btn active apple-tactile" type="button" data-task-filter="active">진행 중</button>
+              <button id="filter-tasks-completed" class="segmented-btn apple-tactile" type="button" data-task-filter="completed">완료·기록</button>
+            </div>
+          </div>
+
+          <div class="tasks-layout">
+            <div class="tasks-composer-column" style="display:flex; flex-direction:column; gap:12px; min-width:0; max-width:100%;">
               <!-- Component 2: Unified Todo & Clarification Gate (Tasks View Mirror) -->
-              <div class="card hub-todo-card" id="card-tasks-todo-gate">
+              <div class="card hub-todo-card liquid-card" id="card-tasks-todo-gate">
                 <div class="section-heading compact">
                   <div>
                     <p class="eyebrow">자율 대행 및 관문 검증</p>
                     <h2>통합 할 일 인박스</h2>
                   </div>
                   <div class="todo-heading-actions">
-                    <button id="hub-tasks-todo-sync-btn" class="button secondary compact-btn" type="button">🔄 동기화</button>
-                    <button id="hub-tasks-todo-new-btn" class="button primary compact-btn" type="button">+ 새 할 일</button>
+                    <button id="hub-tasks-todo-sync-btn" class="button secondary compact-btn apple-tactile" type="button">🔄 동기화</button>
+                    <button id="hub-tasks-todo-new-btn" class="button primary compact-btn apple-tactile" type="button">+ 새 할 일</button>
                   </div>
                 </div>
                 <div id="hub-tasks-todo-items-host" class="hub-todo-items-list">
@@ -500,17 +669,17 @@
               </div>
 
               <!-- Component 3: Category Playbooks & Execution Pipelines -->
-              <div class="card hub-playbooks-card" id="card-category-playbooks">
+              <div class="card hub-playbooks-card liquid-card" id="card-category-playbooks">
                 <div class="section-heading compact">
                   <div>
                     <p class="eyebrow">반복 지식 및 선호 규칙 (Memory Playbooks)</p>
                     <h2>카테고리별 플레이북 및 실행 파이프라인</h2>
                   </div>
                   <div class="pipeline-quick-actions">
-                    <button class="button secondary compact-btn pipeline-btn" type="button" data-pipeline="research">⚡ Research</button>
-                    <button class="button secondary compact-btn pipeline-btn" type="button" data-pipeline="coding">⚡ Coding</button>
-                    <button class="button secondary compact-btn pipeline-btn" type="button" data-pipeline="ingestion">⚡ Ingestion</button>
-                    <button class="button secondary compact-btn pipeline-btn" type="button" data-pipeline="org">⚡ Clean/Org</button>
+                    <button class="button secondary compact-btn pipeline-btn apple-tactile" type="button" data-pipeline="research">⚡ Research</button>
+                    <button class="button secondary compact-btn pipeline-btn apple-tactile" type="button" data-pipeline="coding">⚡ Coding</button>
+                    <button class="button secondary compact-btn pipeline-btn apple-tactile" type="button" data-pipeline="ingestion">⚡ Ingestion</button>
+                    <button class="button secondary compact-btn pipeline-btn apple-tactile" type="button" data-pipeline="org">⚡ Clean/Org</button>
                   </div>
                 </div>
                 <div id="hub-playbooks-host" class="hub-playbooks-grid">
@@ -520,7 +689,7 @@
             </div>
 
             <div class="tasks-monitoring">
-              <div class="card sub-panel">
+              <div class="card sub-panel liquid-card">
                 <div class="section-heading compact">
                   <h2>진행 중인 작업</h2>
                 </div>
@@ -529,7 +698,7 @@
                 </div>
               </div>
 
-              <div class="card sub-panel">
+              <div class="card sub-panel liquid-card">
                 <div class="section-heading compact">
                   <h2>승인 대기 요청</h2>
                 </div>
@@ -539,7 +708,7 @@
               </div>
 
               <!-- Workspace Agent Runs Timeline (.agent-runs/runs.jsonl) -->
-              <div class="card sub-panel" style="margin-top: 16px;">
+              <div class="card sub-panel liquid-card" style="margin-top: 16px;">
                 <div class="section-heading compact">
                   <div>
                     <p class="eyebrow">Execution Logs</p>
@@ -555,33 +724,37 @@
           </div>
         </section>
 
-        <!-- VIEW 5: LOGS -->
+        <!-- ============================================== -->
+        <!-- VIEW 5: LOGS                                   -->
+        <!-- ============================================== -->
         <section id="view-logs" class="view-section">
-          <div class="log-panel card">
+          <div class="log-panel card liquid-card">
             <div class="log-header">
               <div>
                 <h2>브로커 실시간 로그</h2>
                 <p id="log-path" class="muted">로그 파일 경로 확인 중…</p>
               </div>
               <div class="log-actions">
-                <button id="log-copy-btn" class="button secondary">📋 로그 복사</button>
-                <button id="log-refresh-btn" class="button secondary">↻ 새로고침</button>
+                <button id="log-copy-btn" class="button secondary apple-tactile">📋 로그 복사</button>
+                <button id="log-refresh-btn" class="button secondary apple-tactile">↻ 새로고침</button>
               </div>
             </div>
             <pre id="log-lines" class="log-content">로그를 불러오는 중…</pre>
           </div>
         </section>
 
-        <!-- VIEW 6: SETTINGS -->
+        <!-- ============================================== -->
+        <!-- VIEW 6: SETTINGS                               -->
+        <!-- ============================================== -->
         <section id="view-settings" class="view-section">
           <div class="settings-grid">
             <!-- System & Startup Options -->
-            <div class="card settings-card highlight-card">
+            <div class="card settings-card highlight-card liquid-card">
               <h3>🚀 시스템 시작 및 백그라운드 가동</h3>
               <div class="setting-item flex-between">
                 <div>
                   <span class="setting-label">OS 시작 시 자동 실행</span>
-                  <p class="muted">컴퓨터를 켜면 Integrated Power 백그라운드 브로커 및 관제 센터가 자동으로 시작됩니다 (Windows=레지스트리, macOS=launchd, Linux=XDG autostart).</p>
+                  <p class="muted">컴퓨터를 켜면 Integrated Power 백그라운드 브로커 및 관제 센터가 자동으로 시작됩니다.</p>
                 </div>
                 <label class="switch-toggle">
                   <input type="checkbox" id="setting-autostart-toggle" />
@@ -594,7 +767,7 @@
                   <p class="muted">AI 쿼터(Gemini/Codex/Claude)가 100% 충전되면 즉시 OS 데스크톱 알림을 보냅니다.</p>
                 </div>
                 <div class="toggle-and-test">
-                  <button id="btn-test-notification" class="button secondary compact-btn">🔔 테스트 알림</button>
+                  <button id="btn-test-notification" class="button secondary compact-btn apple-tactile">🔔 테스트 알림</button>
                   <label class="switch-toggle">
                     <input type="checkbox" id="setting-token-notify-toggle" checked />
                     <span class="slider round"></span>
@@ -607,7 +780,7 @@
                   <p class="muted">AI 쿼터 및 상태를 백그라운드에서 주기적으로 동기화하는 간격을 설정합니다.</p>
                 </div>
                 <div class="select-container">
-                  <select id="setting-poll-interval-select" class="input-select" style="background:#0f172a; color:#f8fafc; border:1px solid #334155; border-radius:6px; padding:6px 10px; font-size:12px;">
+                  <select id="setting-poll-interval-select" class="input-select" style="background:var(--input-bg); color:var(--text-main); border:1px solid var(--glass-border-subtle); border-radius:6px; padding:6px 10px; font-size:12px;">
                     <option value="1000">1초 (최고 반응성)</option>
                     <option value="3000">3초 (권장 실시간)</option>
                     <option value="5000" selected>5초 (기본값)</option>
@@ -630,7 +803,7 @@
               <div class="setting-item flex-between">
                 <div>
                   <span class="setting-label">작업표시줄에 창 표시 (OS 공통)</span>
-                  <p class="muted">Windows 작업표시줄 / macOS Dock / Linux 패널에 창을 표시합니다. 끄면 트레이(Windows)로 축소되고, 다시 켜면 작업표시줄로 복귀합니다.</p>
+                  <p class="muted">Windows 작업표시줄 / macOS Dock / Linux 패널에 창을 표시합니다.</p>
                 </div>
                 <label class="switch-toggle">
                   <input type="checkbox" id="setting-taskbar-toggle" checked />
@@ -640,40 +813,36 @@
             </div>
 
             <!-- External quota providers -->
-            <div class="card settings-card">
+            <div class="card settings-card liquid-card">
               <h3>🧩 외부 provider (커스텀 엔드포인트)</h3>
               <p class="muted" style="margin-top:4px;">
-                vLLM / LM Studio / Ollama / SGLang / 자체 게이트웨이 등 <strong>OpenAI 호환 엔드포인트</strong>를
-                등록합니다. <strong>⚡ 테스트</strong>는 서버 연결 + 모델 조회(
-                <code>GET /v1/models</code> 또는 Ollama <code>/api/tags</code>)를 수행하고, quota 엔드포인트가
-                있으면 quota 윈도우도 함께 파싱합니다. 등록된 provider는 토큰 탭에 카드가 생기고
-                <code>remainingPercentage</code>·<code>usedPercentage</code>·토큰 한도쌍을 자동 인식합니다. 이 등록은 모델/쿼터 조회용이며 작업 실행 provider로 추가하지 않습니다.
+                vLLM / LM Studio / Ollama / SGLang / 자체 게이트웨이 등 <strong>OpenAI 호환 엔드포인트</strong>를 등록합니다.
               </p>
               <div class="setting-item">
                 <div style="display:grid; grid-template-columns: minmax(120px,1fr) minmax(220px,2fr); gap:8px; align-items:end;">
-                  <label style="font-size:11px; color:#94a3b8;">이름
+                  <label style="font-size:11px; color:var(--text-muted);">이름
                     <input type="text" id="ext-name" placeholder="예: vLLM remote" style="width:100%; margin-top:4px; box-sizing:border-box;" />
                   </label>
-                  <label style="font-size:11px; color:#94a3b8;">엔드포인트 URL
+                  <label style="font-size:11px; color:var(--text-muted);">엔드포인트 URL
                     <input type="text" id="ext-url" placeholder="http://192.168.0.29:18082/v1" style="width:100%; margin-top:4px; box-sizing:border-box;" />
                   </label>
-                  <label style="font-size:11px; color:#94a3b8;">API Key <span class="muted">(로컬 서버는 비워도 됨)</span>
+                  <label style="font-size:11px; color:var(--text-muted);">API Key <span class="muted">(로컬 서버는 비워도 됨)</span>
                     <input type="password" id="ext-apikey" placeholder="기존 키 유지하려면 비워둡니다" style="width:100%; margin-top:4px; box-sizing:border-box;" />
                   </label>
-                  <label style="font-size:11px; color:#94a3b8;">기본 모델
+                  <label style="font-size:11px; color:var(--text-muted);">기본 모델
                     <input type="text" id="ext-model" placeholder="예: Qwen3.8-27B-AWQ (비우면 자동)" style="width:100%; margin-top:4px; box-sizing:border-box;" />
                   </label>
-                  <label style="font-size:11px; color:#94a3b8; grid-column:1 / -1;">quota 엔드포인트 (선택 — 없으면 모델 조회만)
+                  <label style="font-size:11px; color:var(--text-muted); grid-column:1 / -1;">quota 엔드포인트 (선택 — 없으면 모델 조회만)
                     <input type="text" id="ext-quota" placeholder="https://api.openai.com/v1/organization/usage" style="width:100%; margin-top:4px; box-sizing:border-box;" />
                   </label>
                 </div>
                 <div style="display:flex; gap:16px; align-items:center; margin-top:10px; flex-wrap:wrap;">
-                  <label style="font-size:12px; color:#cbd5e1; display:flex; gap:6px; align-items:center;">
+                  <label style="font-size:12px; color:var(--text-main); display:flex; gap:6px; align-items:center;">
                     <input type="checkbox" id="ext-discover" checked /> 모델 자동 조회
                   </label>
-                  <label style="font-size:12px; color:#cbd5e1; display:flex; gap:6px; align-items:center;">
+                  <label style="font-size:12px; color:var(--text-main); display:flex; gap:6px; align-items:center;">
                     갱신 주기
-                    <select id="ext-poll" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); color:#e2e8f0; border-radius:6px; padding:2px 6px;">
+                    <select id="ext-poll" style="background:var(--glass-surface-subtle); border:1px solid var(--glass-border-subtle); color:var(--text-main); border-radius:6px; padding:2px 6px;">
                       <option value="10">10초</option>
                       <option value="30">30초</option>
                       <option value="60" selected>60초 (기본)</option>
@@ -682,16 +851,16 @@
                     </select>
                   </label>
                   <span style="flex:1;"></span>
-                  <button id="ext-test" class="button">⚡ 테스트</button>
-                  <button id="ext-add" class="button primary">💾 등록</button>
+                  <button id="ext-test" class="button apple-tactile">⚡ 테스트</button>
+                  <button id="ext-add" class="button primary apple-tactile">💾 등록</button>
                 </div>
               </div>
-              <div id="ext-test-result" style="display:none; margin-top:10px; padding:10px 12px; border:1px solid rgba(255,255,255,0.12); border-radius:8px; background:rgba(255,255,255,0.03); font-size:12px;"></div>
-              <div id="ext-error" style="font-size:11px; color:#f87171; margin-top:6px; min-height:14px;"></div>
+              <div id="ext-test-result" style="display:none; margin-top:10px; padding:10px 12px; border:1px solid var(--glass-border); border-radius:8px; background:var(--glass-surface-subtle); font-size:12px;"></div>
+              <div id="ext-error" style="font-size:11px; color:var(--accent-rose); margin-top:6px; min-height:14px;"></div>
             </div>
 
             <!-- Network Endpoints -->
-            <div class="card settings-card">
+            <div class="card settings-card liquid-card">
               <h3>🌐 브로커 네트워크 엔드포인트</h3>
               <div class="setting-item">
                 <span class="setting-label">바인드 주소</span>
@@ -712,7 +881,7 @@
             </div>
 
             <!-- Host AI Integrations -->
-            <div class="card settings-card">
+            <div class="card settings-card liquid-card">
               <h3>🔌 호스트 AI 연동 및 의존성 구성</h3>
               <!-- Claude Desktop & CLI -->
               <div class="setting-item">
@@ -720,62 +889,62 @@
                   <span class="setting-label">Anthropic Claude (Desktop & CLI)</span>
                   <span class="status-pill available" style="font-size:10px;">설정 지원</span>
                 </div>
-                <p class="muted" style="margin-top:2px;">Claude Desktop 설정 파일(<code>%APPDATA%\Claude\claude_desktop_config.json</code>)에 MCP를 자동 주입합니다.</p>
+                <p class="muted" style="margin-top:2px;">Claude Desktop 설정 파일에 MCP를 자동 주입합니다.</p>
                 <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
-                  <button id="btn-settings-claude" class="button secondary register-claude">⚡ Claude Desktop MCP 자동 등록</button>
-                  <button id="btn-settings-claude-copy" class="button secondary copy-claude-mcp">📋 Claude JSON 복사</button>
+                  <button id="btn-settings-claude" class="button secondary register-claude apple-tactile">⚡ Claude Desktop MCP 자동 등록</button>
+                  <button id="btn-settings-claude-copy" class="button secondary copy-claude-mcp apple-tactile">📋 Claude JSON 복사</button>
                 </div>
-                <div style="margin-top:8px; padding:8px; background:#0f172a; border-radius:6px; font-size:11px; color:#94a3b8;">
+                <div style="margin-top:8px; padding:8px; background:var(--glass-surface-subtle); border-radius:6px; font-size:11px; color:var(--text-muted); border:1px solid var(--glass-border-subtle);">
                   <div>💡 <strong>Claude CLI (@anthropic-ai/claude-code) 연동:</strong></div>
                   <div>터미널에서 <code id="settings-claude-cli-cmd">claude mcp add integrated-power http://127.0.0.1:37241/mcp</code> 실행</div>
                   <div style="margin-top:4px;">🔑 <strong>API 키 환경변수:</strong> <code>ANTHROPIC_API_KEY</code> 설정 시 Direct Usage로 자동 측정됩니다.</div>
                 </div>
               </div>
               <!-- ChatGPT Desktop -->
-              <div class="setting-item" style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.06);">
+              <div class="setting-item" style="margin-top:14px; padding-top:14px; border-top:1px solid var(--glass-border-subtle);">
                 <div class="flex-between">
                   <span class="setting-label">OpenAI ChatGPT Desktop</span>
                   <span class="status-pill available" style="font-size:10px;">MCP 지원</span>
                 </div>
                 <p class="muted" style="margin-top:2px;">맞춤형 MCP > <code>스트리밍 가능한 HTTP</code> > <code id="settings-chatgpt-mcp-url">http://127.0.0.1:37241/mcp</code></p>
                 <div style="display:flex; gap:8px; margin-top:8px;">
-                  <button id="btn-settings-chatgpt" class="button secondary copy-chatgpt-mcp">📋 ChatGPT URL 복사</button>
+                  <button id="btn-settings-chatgpt" class="button secondary copy-chatgpt-mcp apple-tactile">📋 ChatGPT URL 복사</button>
                 </div>
               </div>
             </div>
 
-            <!-- Component 4: Portable Vault & Todo Settings -->
-            <div class="card settings-card" id="settings-vault-todo-card">
+            <!-- Portable Vault & Todo Settings -->
+            <div class="card settings-card liquid-card" id="settings-vault-todo-card">
               <h3>🗂️ 옵시디언 볼트 및 통합 할 일(Todo) 저장소</h3>
               <p class="muted" style="margin-top:4px;">
-                개인 지식 베이스(Obsidian Vault) 및 마크다운 할 일 목록의 경로를 설정합니다. 비워두면 시스템 기본 경로(%LOCALAPPDATA%\IntegratedPower\state\todos.md)와 레지스트리 감지 볼트를 사용합니다.
+                개인 지식 베이스(Obsidian Vault) 및 마크다운 할 일 목록의 경로를 설정합니다. 비워두면 시스템 기본 경로와 레지스트리 감지 볼트를 사용합니다.
               </p>
               <div class="setting-item">
-                <label style="font-size:11px; color:#94a3b8; display:block; margin-bottom:4px;">옵시디언 볼트 경로
+                <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">옵시디언 볼트 경로
                   <div style="display:flex; gap:8px; margin-top:4px; flex-wrap:wrap;">
                     <input type="text" id="setting-vault-path" placeholder="자동 감지 (Obsidian 볼트 폴더 경로)" style="flex:1; min-width:120px;" />
-                    <button id="btn-detect-vaults" class="button secondary compact-btn" type="button">🔍 볼트 자동 탐색</button>
+                    <button id="btn-detect-vaults" class="button secondary compact-btn apple-tactile" type="button">🔍 볼트 자동 탐색</button>
                   </div>
                 </label>
-                <label style="font-size:11px; color:#94a3b8; display:block; margin-top:10px;">마크다운 할 일(Todo) 파일 경로
+                <label style="font-size:11px; color:var(--text-muted); display:block; margin-top:10px;">마크다운 할 일(Todo) 파일 경로
                   <input type="text" id="setting-todo-path" placeholder="자동 감지 (Obsidian 볼트 또는 기본 상태 폴더 Todo.md)" style="width:100%; margin-top:4px;" />
                 </label>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap; gap:8px;">
-                  <label class="switch-toggle-label" style="font-size:12px; color:#cbd5e1; display:flex; align-items:center; gap:8px;">
+                  <label class="switch-toggle-label" style="font-size:12px; color:var(--text-main); display:flex; align-items:center; gap:8px;">
                     <label class="switch-toggle">
                       <input type="checkbox" id="setting-todo-auto-sync" checked />
                       <span class="slider round"></span>
                     </label>
                     <span>마크다운 파일 변경 시 자동 동기화</span>
                   </label>
-                  <button id="btn-save-vault-settings" class="button primary" type="button">💾 설정 저장</button>
+                  <button id="btn-save-vault-settings" class="button primary apple-tactile" type="button">💾 설정 저장</button>
                 </div>
               </div>
               <div id="vault-discovery-results" class="vault-discovery-box" style="display:none; margin-top:10px;"></div>
             </div>
 
             <!-- Storage & Encryption -->
-            <div class="card settings-card">
+            <div class="card settings-card liquid-card">
               <h3>🔒 암호화 원장 및 로컬 저장소</h3>
               <div class="setting-item">
                 <span class="setting-label">상태 저장 디렉터리</span>
@@ -788,14 +957,88 @@
             </div>
           </div>
         </section>
-
-        <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
-
-        <footer class="statusbar">
-          <span id="status" class="muted">브로커 상태를 확인하는 중…</span>
-          <span>Integrated Power v0.9.22 · Windows 11 Fluent loopback</span>
-        </footer>
       </main>
+
+      <!-- Bottom Floating Liquid Glass Tab Dock -->
+      <nav id="bottom-tab-dock" class="liquid-dock" aria-label="주 메뉴">
+        <div class="liquid-capsule dock-capsule">
+          <button id="nav-home" class="nav-link apple-tactile" data-section="home" aria-label="홈">
+            <span class="nav-icon">⌂</span><span class="nav-label">홈</span>
+          </button>
+          <button id="nav-tasks" class="nav-link apple-tactile" data-section="tasks" aria-label="작업">
+            <span class="nav-icon">☷</span><span class="nav-label">작업</span>
+          </button>
+          <button id="nav-tokens" class="nav-link active apple-tactile" data-section="tokens" aria-label="토큰 상태">
+            <span class="nav-icon">⛁</span><span class="nav-label">토큰 상태</span>
+          </button>
+          <button id="nav-agents" class="nav-link apple-tactile" data-section="agents" aria-label="에이전트">
+            <span class="nav-icon">◈</span><span class="nav-label">에이전트</span>
+          </button>
+          <button id="nav-logs" class="nav-link log-button apple-tactile" data-section="logs" aria-label="로그">
+            <span class="nav-icon">▤</span><span class="nav-label">로그</span>
+          </button>
+          <button id="nav-settings" class="nav-link apple-tactile" data-section="settings" aria-label="설정">
+            <span class="nav-icon">⚙</span><span class="nav-label">설정</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- ============================================== -->
+      <!-- MODAL 1: 2x2 연동 허브 FOLDER MODAL            -->
+      <!-- ============================================== -->
+      <div id="integration-modal" class="liquid-modal hidden liquid-sheet-overlay" role="dialog" aria-modal="true" aria-labelledby="integration-modal-title">
+        <div class="liquid-card-elevated integration-modal-content">
+          <div class="modal-header">
+            <div class="modal-title-group">
+              <div class="hub-glyph-badge">HUB</div>
+              <div>
+                <h2 id="integration-modal-title" class="modal-title">통합 연동 허브 (Unified Integration Hub)</h2>
+                <p class="modal-subtitle">Open-Source-First 생태계 표준 프로토콜 연동 현황</p>
+              </div>
+            </div>
+            <button id="btn-close-integration-modal" class="modal-close-btn apple-tactile" type="button" aria-label="닫기">✕</button>
+          </div>
+          <div id="integration-connectors-grid" class="integration-connectors-grid">
+            <!-- Dynamically populated connector cards -->
+          </div>
+          <div class="modal-footer">
+            <span class="hub-manifesto-hint">IPCC는 바퀴를 재발명하지 않고 신호를 배분하는 통신 관제소입니다.</span>
+            <button id="btn-dismiss-integration-modal" class="button secondary compact-btn apple-tactile" type="button">닫기</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================== -->
+      <!-- MODAL 2: CLARIFICATION MODAL SHEET             -->
+      <!-- ============================================== -->
+      <div id="clarification-modal" class="liquid-modal hidden liquid-sheet-overlay" role="dialog" aria-modal="true" aria-labelledby="clarification-modal-title">
+        <div class="liquid-card-elevated clarification-sheet-content">
+          <div class="modal-header">
+            <div class="modal-title-group">
+              <div class="modal-status-dot amber"></div>
+              <h2 id="clarification-modal-title" class="modal-title">지침 세부 확인 (규칙 5 준수)</h2>
+            </div>
+            <button id="btn-close-clarification-modal" class="modal-close-btn apple-tactile" type="button" aria-label="닫기">✕</button>
+          </div>
+          <div class="modal-body">
+            <p id="clarification-todo-title" class="clarification-prompt-text font-bold"></p>
+            <div id="clarification-questions-container" class="clarification-questions-list">
+              <!-- Dynamically populated question chips & inputs -->
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="btn-cancel-clarification" class="button secondary compact-btn apple-tactile" type="button">취소</button>
+            <button id="btn-submit-clarification" class="button primary compact-btn apple-tactile" type="button">답변 제출 및 재평가</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+      <footer class="statusbar">
+        <span id="status" class="muted">브로커 상태를 확인하는 중…</span>
+        <span>Integrated Power v0.12.0 · Smoked Titanium Liquid Glass</span>
+      </footer>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

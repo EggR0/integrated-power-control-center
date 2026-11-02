@@ -1,7 +1,7 @@
 {
   "name": "integrated-power-control-center",
   "private": true,
-  "version": "0.11.6",
+  "version": "0.12.0",
   "scripts": {
     "dev": "node ./scripts/dev.js",
     "build": "node ./scripts/build-ui.js",

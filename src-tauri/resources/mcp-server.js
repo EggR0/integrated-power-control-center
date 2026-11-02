@@ -13,7 +13,8 @@ const brokerPackage = resolveBrokerPackage({
 const { prepareCanonicalBrokerLedger, configureBrokerAssets } = require("./scripts/canonical-broker-state.js");
 configureBrokerAssets(brokerPackage, process.env);
 const { IntegratedPowerBroker, createFirstWaveAdapters, startMcpStdioServer } = require(brokerPackage.entrypointPath);
-const stateRoot = process.env.INTEGRATED_POWER_STATE_ROOT || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), ".local", "share"), "IntegratedPower", "state");
+const stateRoot = process.env.INTEGRATED_POWER_STATE_ROOT || process.env.INTEGRATED_POWER_STATE_DIR || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), ".local", "share"), "IntegratedPower", "state");
+process.env.INTEGRATED_POWER_STATE_ROOT = stateRoot;
 fs.mkdirSync(stateRoot, { recursive: true });
 (async () => {
   const { ledger } = await prepareCanonicalBrokerLedger(brokerPackage, stateRoot);

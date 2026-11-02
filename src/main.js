@@ -39,7 +39,7 @@ const API = "http://127.0.0.1:" + BROKER_PORT;
 // ?broker= override in dev) so the label never lies about which process is up.
 {
   const _footer = document.getElementById("broker-footer");
-  if (_footer) _footer.textContent = `v0.9.22 · loopback ${BROKER_PORT}`;
+  if (_footer) _footer.textContent = `v0.12.0 · loopback ${BROKER_PORT}`;
   // Every endpoint label in the settings tab reflects the actual broker port
   // (BROKER_PORT), so dev ?broker=<port> runs never show a stale 37241 URL.
   const _setEndpoint = (id, value) => {
@@ -98,6 +98,8 @@ const state = {
   lastSyncAt: null,
   tokenStatusError: "",
   activeTab: "tokens", // DEFAULT ACTIVE TAB
+  taskFilter: "active", // "active" (pending, running) | "completed" (completed, failed, cancelled)
+  activeClarificationTodoId: null,
   // External (user-registered) providers: { id, name, baseUrl, quotaUrl?, apiKey?, defaultModel?, discoverModels, pollMs, enabled }[]
   externalProviders: [],
   // Latest parsed quota result per provider id (from the broker-side fetch).
@@ -132,11 +134,7 @@ const defaults = [
 
 const $ = (id) => document.getElementById(id);
 // Brand grouping: several broker capabilities are different INSTALL SURFACES
-// of one product/account — the Codex App Server and the ChatGPT desktop/web
-// MCP are the same ChatGPT subscription; Claude Desktop and Cowork are the
-// same Claude account; the Antigravity IDE and the Antigravity app are the
-// same product. The agents view and the main-agent picker show one card per
-// brand; the per-surface details stay in the card meta lines.
+// of one product/account
 const AGENT_BRANDS = {
   "openai.codex.app": "chatgpt",
   "openai.chatgpt.app": "chatgpt",
@@ -157,7 +155,7 @@ const AGENT_BRAND_LABELS = {
 // Home stat denominator: brand groups (5), not raw install surfaces (8).
 {
   const _statAgents = document.getElementById("stat-agents");
-  if (_statAgents) _statAgents.textContent = `- / ${AGENT_BRANDS.length}개`;
+  if (_statAgents) _statAgents.textContent = `- / 5개`;
 }
 function brandGroups() {
   const groups = new Map();
@@ -185,6 +183,20 @@ const button = (text, className, data = {}) => {
   return value;
 };
 const safeText = (value, fallback = "-") => (value === undefined || value === null || value === "" ? fallback : String(value));
+
+// Apple Liquid Glass Theme System (titanium, pearl, cashmere)
+function applyTheme(themeName) {
+  const chosen = ["titanium", "pearl", "cashmere"].includes(themeName) ? themeName : "titanium";
+  document.documentElement.setAttribute("data-theme", chosen);
+  const shell = $("app-shell");
+  if (shell) shell.setAttribute("data-theme", chosen);
+  localStorage.setItem("ipcc.liquidTheme", chosen);
+
+  ["titanium", "pearl", "cashmere"].forEach((t) => {
+    const btn = $(`theme-btn-${t}`);
+    if (btn) btn.classList.toggle("active", t === chosen);
+  });
+}
 
 async function api(path, options = {}) {
   const controller = new AbortController();
@@ -300,17 +312,10 @@ async function saveQuotaSettings({ message } = {}) {
   }
 }
 
-// A broker built before the P7 external route answers /v1/providers/external
-// with its catch-all 404 {"error":"not_found"} — a definitive stale-broker
-// signature. Detected once during polling so cards can say "restart the
-// broker" instead of a misleading "quota error · not_found".
 let brokerStale = false;
 const isStaleBrokerError = (e) =>
   e && e.status === 404 && /not_found/.test(e.message || "");
-// The broker can be IDE-launched (restart = reopen VS Code) or dev-launched
-// by `npm run dev` (restart = run the command again) — the message must
-// name both, since neither the UI nor the user can tell which is running.
-const STALE_BROKER_HINT = "브로커를 재시작하세요 (IDE 브로커: VS Code 재시작 · dev 브로커: npm run dev 재실행)";
+const STALE_BROKER_HINT = "브로커를 재시작하세요 (IDE 브로커: Antigravity 재시작 · dev 브로커: npm run dev 재실행)";
 
 function setConnection(kind, message) {
   state.brokerOnline = kind === "online";
@@ -319,7 +324,13 @@ function setConnection(kind, message) {
   const label = $("connection-label");
   if (label) label.textContent = message;
   const statBroker = $("stat-broker");
-  if (statBroker) statBroker.textContent = kind === "online" ? `정상 가동 (${BROKER_PORT})` : "연결 끊김";
+  if (statBroker) statBroker.textContent = kind === "online" ? `가동중 (${BROKER_PORT})` : "연결 끊김";
+  const tbStatus = $("titlebar-broker-status");
+  if (tbStatus) {
+    tbStatus.replaceChildren();
+    const pDot = node("span", undefined, kind === "online" ? "pulse-dot-emerald" : "traffic-dot traffic-red");
+    tbStatus.append(pDot, document.createTextNode(` REST 127.0.0.1:${BROKER_PORT}`));
+  }
 }
 
 function currentCapabilities() {
@@ -333,7 +344,7 @@ function showToast(message, isError = false) {
   const toast = $("toast");
   if (!toast) return;
   toast.textContent = message;
-  toast.style.borderColor = isError ? "#f43f5e" : "#38bdf8";
+  toast.style.borderColor = isError ? "var(--accent-rose)" : "var(--accent-amber)";
   toast.classList.remove("hidden");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.add("hidden"), 3800);
@@ -441,12 +452,157 @@ function switchTab(targetTab) {
 
 const gaugeTicksEnabled = () => localStorage.getItem("ip_gauge_ticks") !== "false";
 
-function renderTokens() {
-  const ts = state.tokenStatus || {};
+function renderHomeActivityRings(ts) {
+  const geminiPct = Math.max(0, Math.min(100, ts?.antigravityPercentage ?? 100));
+  const opusPct = Math.max(0, Math.min(100, ts?.opusPercentage ?? 100));
+  const codexPct = Math.max(0, Math.min(100, ts?.codexPercentage ?? 100));
+  const argonPct = Math.max(0, Math.min(100, ts?.argonWeeklyPercentage ?? 100));
 
-  // P3: every window is built by the shared buildTokenMetric (the same source
-  // the IDE webview consumes) — this carries A4 absolute-token availability,
-  // the A6 tone, the A3 K-sync, and the A7 tooltip in one place.
+  const cGemini = 464.95; // 2 * pi * 74
+  const cOpus = 364.42;   // 2 * pi * 58
+  const cCodex = 263.89;  // 2 * pi * 42
+  const cArgon = 163.36;  // 2 * pi * 26
+
+  const setRing = (id, c, pct) => {
+    const el = $(id);
+    if (!el) return;
+    el.setAttribute("stroke-dasharray", String(c));
+    const offset = c * (1 - pct / 100);
+    el.setAttribute("stroke-dashoffset", String(offset));
+  };
+
+  setRing("ring-gemini-fill", cGemini, geminiPct);
+  setRing("ring-opus-fill", cOpus, opusPct);
+  setRing("ring-codex-fill", cCodex, codexPct);
+  setRing("ring-argon-fill", cArgon, argonPct);
+
+  if ($("ring-metric-gemini")) $("ring-metric-gemini").textContent = `${geminiPct.toFixed(0)}%`;
+  if ($("ring-metric-opus")) $("ring-metric-opus").textContent = `${opusPct.toFixed(0)}%`;
+  if ($("ring-metric-codex")) $("ring-metric-codex").textContent = `${codexPct.toFixed(0)}%`;
+  if ($("ring-metric-argon")) $("ring-metric-argon").textContent = `${argonPct.toFixed(0)}%`;
+
+  const argonRow = $("ring-row-argon");
+  const ringCenterStatus = $("ring-center-status");
+  const argonFill = $("ring-argon-fill");
+
+  if (argonPct <= 25) {
+    if (argonRow) {
+      argonRow.classList.add("alert");
+      if ($("ring-metric-argon")) $("ring-metric-argon").textContent = `${argonPct.toFixed(0)}% (경고)`;
+    }
+    if (ringCenterStatus) {
+      ringCenterStatus.textContent = "주의";
+      ringCenterStatus.style.color = "var(--accent-amber)";
+    }
+    if (argonFill) argonFill.style.stroke = "var(--accent-amber)";
+  } else {
+    if (argonRow) argonRow.classList.remove("alert");
+    if (ringCenterStatus) {
+      ringCenterStatus.textContent = "정상";
+      ringCenterStatus.style.color = "var(--accent-emerald)";
+    }
+    if (argonFill) argonFill.style.stroke = "var(--accent-amber)";
+  }
+
+  const lcs = ts?.localComputeStatus;
+  if ($("ring-metric-vram")) {
+    if (lcs && Array.isArray(lcs.gpus) && lcs.gpus[0]) {
+      const g = lcs.gpus[0];
+      const usedGb = (g.vramUsedMb / 1024).toFixed(1);
+      const totalGb = (g.vramTotalMb / 1024).toFixed(0);
+      $("ring-metric-vram").textContent = `${usedGb} / ${totalGb} GB`;
+    } else {
+      $("ring-metric-vram").textContent = "대기 (오프라인)";
+    }
+  }
+}
+
+function getEffectiveTokenStatus() {
+  const ts = state.tokenStatus || {};
+  const accounts = ts.accounts || {};
+  const gcpProjects = ts.gcpProjects || {};
+
+  if (!state.selectedQuotaId) {
+    state.selectedQuotaId = ts.activeAccountEmail || Object.keys(accounts)[0] || "";
+  }
+
+  // If selectedQuotaId is a user account
+  if (state.selectedQuotaId && accounts[state.selectedQuotaId]) {
+    const acc = accounts[state.selectedQuotaId];
+    return {
+      ...ts,
+      antigravityPercentage: acc.antigravityPercentage,
+      antigravityResetTime: acc.antigravityResetTime,
+      antigravityWeeklyPercentage: acc.antigravityWeeklyPercentage,
+      antigravityWeeklyResetTime: acc.antigravityWeeklyResetTime,
+      argonPercentage: acc.argonPercentage,
+      argonResetTime: acc.argonResetTime,
+      argonWeeklyPercentage: acc.argonWeeklyPercentage,
+      argonWeeklyResetTime: acc.argonWeeklyResetTime,
+      opusPercentage: acc.opusPercentage,
+      opusResetTime: acc.opusResetTime,
+      opusWeeklyPercentage: acc.opusWeeklyPercentage,
+      opusWeeklyResetTime: acc.opusWeeklyResetTime,
+      activeAccountEmail: acc.email,
+    };
+  }
+
+  return ts;
+}
+
+function renderTokens() {
+  const rawTs = state.tokenStatus || {};
+  const accounts = rawTs.accounts || {};
+  const gcpProjects = rawTs.gcpProjects || {};
+  const accountEntries = Object.entries(accounts);
+  const gcpEntries = Object.entries(gcpProjects);
+
+  // Render Account / Project Selector Pills
+  const pillContainer = $("account-pill-container");
+  const barEl = $("account-selector-bar");
+  if (pillContainer) {
+    pillContainer.replaceChildren();
+    if (accountEntries.length > 0 || gcpEntries.length > 0) {
+      if (barEl) barEl.style.display = "flex";
+      if (!state.selectedQuotaId) {
+        state.selectedQuotaId = rawTs.activeAccountEmail || accountEntries[0]?.[0] || "";
+      }
+
+      for (const [email, acc] of accountEntries) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        const isSelected = state.selectedQuotaId === email;
+        btn.className = `account-pill-btn apple-tactile${isSelected ? " active" : ""}${acc.isIdeActive ? " ide-active" : ""}${acc.error ? " has-error" : ""}`;
+        btn.textContent = `${email}${acc.isIdeActive ? " (IDE)" : ""}${acc.error ? " ⚠️" : ""}`;
+        btn.title = acc.error ? `오류: ${acc.error}` : `${email} 쿼터 보기`;
+        btn.onclick = () => {
+          state.selectedQuotaId = email;
+          renderTokens();
+        };
+        pillContainer.appendChild(btn);
+      }
+
+      for (const [projId, proj] of gcpEntries) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        const isSelected = state.selectedQuotaId === projId;
+        btn.className = `account-pill-btn gcp-project apple-tactile${isSelected ? " active" : ""}`;
+        btn.textContent = `☁️ ${proj.label || projId}`;
+        btn.title = `GCP Vertex AI 프로젝트: ${projId}`;
+        btn.onclick = () => {
+          state.selectedQuotaId = projId;
+          renderTokens();
+        };
+        pillContainer.appendChild(btn);
+      }
+    } else if (barEl) {
+      barEl.style.display = "none";
+    }
+  }
+
+  const ts = getEffectiveTokenStatus();
+  renderHomeActivityRings(ts);
+
   const windows = {
     "gemini-5h": buildTokenMetric("5Hours", ts, "antigravity", "Gemini 5Hours", "antigravityWeekly"),
     "gemini-weekly": buildTokenMetric("Weekly", ts, "antigravityWeekly", "Gemini Weekly"),
@@ -457,9 +613,6 @@ function renderTokens() {
     "codex-5h": buildTokenMetric("5Hours", ts, "codex", "ChatGPT 5Hours", "codexWeekly"),
     "codex-weekly": buildTokenMetric("Weekly", ts, "codexWeekly", "ChatGPT Weekly"),
   };
-  // One label for "no value reported" — a no-data window is NOT zero and is
-  // not the same as an error; keep the wording consistent across labels,
-  // bars, and reset stamps.
   const noDataText = state.tokenStatusError ? "쿼터 갱신 실패" : "쿼터 대기 중";
 
   const argon5hRow = $("row-argon-5h");
@@ -470,7 +623,7 @@ function renderTokens() {
     const label = $(`label-${id}`);
     if (label) {
       label.textContent = m.unavailable ? noDataText : m.isWeeklyExhausted ? "0.00% remaining (Weekly exhausted)" : `${m.percentage.toFixed(2)}% remaining`;
-      label.title = m.tooltip; // A7 tooltip (hover)
+      label.title = m.tooltip;
     }
     const reset = $(`reset-${id}`);
     if (reset) {
@@ -503,16 +656,10 @@ function renderTokens() {
     if (bar) {
       const displayPct = typeof m.displayPercentage === "number" ? m.displayPercentage : m.percentage;
       bar.style.width = `${Math.max(0, Math.min(100, displayPct ?? 0))}%`;
-      // Unified tone thresholds (<=15 critical, 15-35 caution) via the shared
-      // capacityTone — replaces the old hard-coded <20% warning.
       bar.classList.toggle("warning", m.tone === "warning");
       bar.classList.toggle("critical", m.tone === "critical");
       bar.title = m.tooltip;
     }
-    // Gauge ticks: 5 equal parts for 5h windows, 7 for weekly (N-1 dividers).
-    // Divider positions are explicit i/N stops (no repeating-gradient drift),
-    // semi-transparent white so they read on both the colored fill and the
-    // empty dark track. Toggle in settings (ip_gauge_ticks).
     if (gaugeTicksEnabled()) {
       const track = bar && bar.parentElement;
       if (track && track.classList.contains("progress-track")) {
@@ -532,8 +679,6 @@ function renderTokens() {
       const ticks = track && track.querySelector(".progress-ticks");
       if (ticks) ticks.style.display = "none";
     }
-    // A4: absolute tokens (left / max, or the EstimatedAbsolute fallback).
-    // Hidden (empty) when there is no absolute data, so we never show a fake "0".
     const abs = $(`tokens-${id}`);
     if (abs) {
       const p = prefixOf[id];
@@ -542,7 +687,6 @@ function renderTokens() {
     }
   }
 
-  // A5: Best / Lowest summary across the six windows (shared selection logic).
   const summary = calculateCapacitySummary(ts);
   const summaryEl = $("token-capacity-summary");
   if (summaryEl) {
@@ -570,10 +714,6 @@ function renderTokens() {
     codexTag.className = `provider-state-tag ${codexWorking ? "online" : ""}`;
   }
 
-  // 4. Task Routing & Status Tags
-  // No data is NOT "degraded" — that would color a healthy-but-unread state
-  // amber. Unknown values ("unknown", "critical") had no CSS class and
-  // leaked raw English text; map them to the existing tone classes.
   const routingLabel = { normal: "정상", degraded: "저하", restricted: "제한", critical: "제한", unknown: "확인중" };
   const routing = ts.taskRouting || ts.recommendedTaskWeight || "unknown";
   const routingBadge = $("task-routing-badge");
@@ -583,14 +723,11 @@ function renderTokens() {
     routingBadge.textContent = routingLabel[routing] || routing;
   }
 
-  // 5. Anthropic Claude Direct Usage
   const du = ts.claudeDirectUsage || ts.directUsage;
   const hasClaudeData = du && ((du.sevenDaysTokens > 0) || (du.eventCount > 0) || (du.today?.eventCount > 0) || (du.sevenDays?.eventCount > 0));
   
   const claudeTag = $("claude-status-tag");
   if (claudeTag) {
-    // No events can mean "not used" or "not installed" — do not claim a
-    // measurement state. Measured / no-records / neutral, Korean to match.
     const tagText = hasClaudeData ? "기록 있음" : "기록 없음";
     claudeTag.textContent = tagText;
     claudeTag.className = "provider-state-tag";
@@ -637,12 +774,7 @@ function renderTokens() {
     }
   }
 
-  // 6. Local Compute & Multi-GPU
   const lcs = ts.localComputeStatus || {};
-  // P4: the server badge now comes from the shared localServerBadge — the same
-  // criterion the IDE webview uses (a loaded model, else an up/idle endpoint,
-  // else offline). This replaces the old check on a `status` field the P2 state
-  // never carries (it was permanently "Offline").
   const badge = localServerBadge(lcs.endpointHealth, lcs.loadedModels, lcs.programName);
   const localTag = $("local-llm-status-tag");
   if (localTag) {
@@ -651,8 +783,6 @@ function renderTokens() {
     localTag.className = `provider-state-tag ${tagClass}`.trim();
     localTag.title = badge.text;
   }
-  // Footer: reflect the actually-loaded model and endpoint health (the markup
-  // previously hard-coded "qwen3.8:27b" / "정상 (127.0.0.1:11434)").
   const loadedModelEl = $("local-loaded-model");
   if (loadedModelEl) loadedModelEl.textContent = localLoadedModelLabel(lcs.loadedModels);
   const endpointEl = $("local-endpoint-health");
@@ -673,14 +803,14 @@ function renderTokens() {
       card.className = "gpu-block";
       card.style.marginTop = "8px";
       card.style.padding = "8px";
-      card.style.background = "#0f172a";
+      card.style.background = "var(--glass-surface-subtle)";
       card.style.borderRadius = "8px";
-      card.style.border = "1px solid rgba(255, 255, 255, 0.05)";
+      card.style.border = "1px solid var(--glass-border-subtle)";
 
       const title = node("div", `GPU ${gpu.id}: ${gpu.name}`);
       title.style.fontWeight = "700";
       title.style.fontSize = "12px";
-      title.style.color = "#f8fafc";
+      title.style.color = "var(--text-main)";
       title.style.marginBottom = "6px";
       card.append(title);
 
@@ -695,12 +825,12 @@ function renderTokens() {
       utilRow.style.justifyContent = "space-between";
       utilRow.style.fontSize = "11.5px";
       const utilLabel = node("span", "GPU Utilization");
-      utilLabel.style.color = "#94a3b8";
+      utilLabel.style.color = "var(--text-muted)";
       const utilVal = node("span", `${gpu.utilizationPercentage}% current load · `);
-      utilVal.style.color = "#e2e8f0";
+      utilVal.style.color = "var(--text-main)";
       utilVal.style.fontWeight = "600";
       const pwr = node("span", `${gpu.powerDrawW !== undefined ? gpu.powerDrawW.toFixed(2) + "W" : "-"} / ${gpu.powerLimitW !== undefined ? gpu.powerLimitW.toFixed(1) + "W" : "-"}`);
-      pwr.style.color = "#38bdf8";
+      pwr.style.color = "var(--accent-amber)";
       utilVal.append(pwr);
       utilRow.append(utilLabel, utilVal);
 
@@ -722,12 +852,12 @@ function renderTokens() {
       vramRow.style.justifyContent = "space-between";
       vramRow.style.fontSize = "11.5px";
       const vramLabel = node("span", "VRAM Usage");
-      vramLabel.style.color = "#94a3b8";
+      vramLabel.style.color = "var(--text-muted)";
       const vramVal = node("span", `${vramPct}% used `);
-      vramVal.style.color = "#e2e8f0";
+      vramVal.style.color = "var(--text-main)";
       vramVal.style.fontWeight = "600";
       const vramSub = node("span", `(${(gpu.vramUsedMb / 1024).toFixed(1)} GB / ${(gpu.vramTotalMb / 1024).toFixed(1)} GB)`);
-      vramSub.style.color = "#94a3b8";
+      vramSub.style.color = "var(--text-subtle)";
       vramSub.style.fontSize = "10.5px";
       vramVal.append(vramSub);
       vramRow.append(vramLabel, vramVal);
@@ -744,13 +874,9 @@ function renderTokens() {
     });
   }
 
-  // 7. Activity Log
   const actList = $("token-activity-list");
   if (actList) {
     actList.replaceChildren();
-    // The empty-state hint must be static — stamping a fresh timestamp here
-    // made every poll look like a newly parsed sync ("Parsed real-time quota
-    // at 12:34:56" re-rendered every 5s while nothing had actually parsed).
     const activities = Array.isArray(ts.activity) && ts.activity.length ? ts.activity : [
       "브로커에서 활동 기록을 받아오지 못했습니다.",
     ];
@@ -759,13 +885,13 @@ function renderTokens() {
     }
   }
   if ($("token-last-updated")) {
-    // Show the last SUCCESSFUL sync time, not the render time — during a
-    // broker outage this stamp must not claim a fresh live sync.
     const t = state.lastSyncAt ? state.lastSyncAt.toLocaleTimeString() : "—";
     $("token-last-updated").textContent = state.brokerOnline
       ? `마지막 동기화: ${t} · 실시간 연동됨`
       : `브로커 오프라인 — 마지막 동기화: ${t}`;
   }
+
+  renderHomeActivityRings(ts);
 }
 
 function renderMainAgent() {
@@ -787,6 +913,8 @@ function renderMainAgent() {
   }
 
   if ($("main-agent-name")) $("main-agent-name").textContent = selectedGroup.label;
+  if ($("top-agent-label")) $("top-agent-label").textContent = selectedGroup.label;
+
   const pill = $("main-agent-status");
   if (pill) {
     const anyAvailable = selectedGroup.items.some((i) => i.available);
@@ -811,16 +939,16 @@ function renderMainAgent() {
     actions.replaceChildren();
     if (selectedGroup.key === "chatgpt") {
       actions.append(
-        button("📋 ChatGPT HTTP URL 복사", "button primary copy-chatgpt-mcp"),
-        button("📋 STDIO 경로 복사", "button secondary copy-chatgpt-stdio"),
+        button("📋 ChatGPT HTTP URL 복사", "button primary copy-chatgpt-mcp apple-tactile"),
+        button("📋 STDIO 경로 복사", "button secondary copy-chatgpt-stdio apple-tactile"),
       );
     } else if (selectedGroup.key === "claude") {
       actions.append(
-        button("⚡ Claude Desktop 자동 등록", "button primary register-claude"),
-        button("📋 설정 JSON 복사", "button secondary copy-claude-mcp"),
+        button("⚡ Claude Desktop 자동 등록", "button primary register-claude apple-tactile"),
+        button("📋 설정 JSON 복사", "button secondary copy-claude-mcp apple-tactile"),
       );
     } else {
-      const copyJsonButton = node("button", undefined, "button secondary copy-generic-mcp");
+      const copyJsonButton = node("button", undefined, "button secondary copy-generic-mcp apple-tactile");
       copyJsonButton.type = "button";
       copyJsonButton.setAttribute("aria-label", "MCP 설정 JSON 복사");
       copyJsonButton.title = "MCP 설정 JSON 복사";
@@ -833,7 +961,7 @@ function renderMainAgent() {
 function renderHomeStats() {
   const groups = brandGroups();
   const availableCount = groups.filter((g) => g.items.some((c) => c.available)).length;
-  if ($("stat-agents")) $("stat-agents").textContent = `${availableCount} / ${groups.length}개`;
+  if ($("stat-agents")) $("stat-agents").textContent = `${availableCount} / 5개`;
   if ($("stat-tasks")) $("stat-tasks").textContent = `${state.tasks.length}건`;
   if ($("stat-approvals")) $("stat-approvals").textContent = `${state.approvals.length}건`;
 }
@@ -844,15 +972,13 @@ function renderAgents() {
   target.replaceChildren();
   for (const group of brandGroups()) {
     const anyAvailable = group.items.some((i) => i.available);
-    const card = node("article", undefined, "agent-card-item card");
+    const card = node("article", undefined, "agent-card-item card liquid-card");
     const topRow = node("div", undefined, "agent-heading");
     topRow.append(node("strong", group.label));
     const pill = node("span", anyAvailable ? "사용가능" : "설치X", `status-pill ${anyAvailable ? "available" : "not-installed"}`);
     topRow.append(pill);
     card.append(topRow);
 
-    // One meta line per install surface, with its own provider id + mode, so
-    // the grouping loses no detail.
     for (const item of group.items) {
       card.append(node("div", `${item.label || item.provider} — ${item.provider} · ${item.mode || "bridge"}`, "agent-card-meta"));
     }
@@ -862,12 +988,12 @@ function renderAgents() {
 
     const act = node("div", undefined, "agent-quick-actions");
     if (group.key === "chatgpt") {
-      act.append(button("📋 HTTP URL", "button secondary copy-chatgpt-mcp"));
+      act.append(button("📋 HTTP URL", "button secondary copy-chatgpt-mcp apple-tactile"));
     } else if (group.key === "claude") {
-      act.append(button("⚡ 자동 등록", "button primary register-claude"));
+      act.append(button("⚡ 자동 등록", "button primary register-claude apple-tactile"));
     } else {
       const rep = brandRepresentative(group);
-      act.append(button("선택", "button secondary select-main-btn", { provider: rep.provider }));
+      act.append(button("선택", "button secondary select-main-btn apple-tactile", { provider: rep.provider }));
     }
     card.append(act);
     target.append(card);
@@ -875,22 +1001,22 @@ function renderAgents() {
 }
 
 function renderTasks() {
-  // Broker task states are English enums; the rest of this UI is Korean, so
-  // map before display (a raw "pending" read as a status the user must
-  // translate).
   const taskStatusLabel = { pending: "대기", running: "진행중", completed: "완료", failed: "실패", cancelled: "취소" };
   const taskTarget = $("tasks");
   if (taskTarget) {
     taskTarget.replaceChildren();
-    if (!state.tasks.length) {
-      taskTarget.append(node("div", "진행 중인 작업이 없습니다.", "empty-card"));
+    const filteredTasks = state.tasks.filter((t) => {
+      const isDone = t.status === "completed" || t.status === "failed" || t.status === "cancelled";
+      return state.taskFilter === "completed" ? isDone : !isDone;
+    });
+
+    if (!filteredTasks.length) {
+      taskTarget.append(node("div", state.taskFilter === "completed" ? "완료된 작업 기록이 없습니다." : "진행 중인 작업이 없습니다.", "empty-card"));
     } else {
-      for (const item of state.tasks) {
-        const itemCard = node("div", undefined, "card task-card");
+      for (const item of filteredTasks) {
+        const itemCard = node("div", undefined, "card task-card liquid-card");
         itemCard.append(node("strong", item.title || item.id));
         itemCard.append(node("p", item.goal || ""));
-        // "supervisor" shows a brand label, not the raw provider key
-        // ("local.openai-compatible" → "로컬 Qwen 3.8 27B").
         const supervisor = item.originProvider
           ? (AGENT_BRAND_LABELS[AGENT_BRANDS[item.originProvider]] || item.originProvider)
           : "-";
@@ -898,8 +1024,8 @@ function renderTasks() {
         itemCard.append(meta);
         const actions = node("div", undefined, "task-actions");
         actions.append(
-          button("위임", "button secondary delegate", { task: item.id, revision: String(item.revision) }),
-          button("취소", "button secondary cancel", { task: item.id, revision: String(item.revision) }),
+          button("위임", "button secondary delegate apple-tactile", { task: item.id, revision: String(item.revision) }),
+          button("취소", "button secondary cancel apple-tactile", { task: item.id, revision: String(item.revision) }),
         );
         itemCard.append(actions);
         taskTarget.append(itemCard);
@@ -914,11 +1040,11 @@ function renderTasks() {
       approvalTarget.append(node("div", "승인 대기 중인 요청이 없습니다.", "empty-card"));
     } else {
       for (const item of state.approvals) {
-        const appCard = node("div", undefined, "card approval-card");
+        const appCard = node("div", undefined, "card approval-card liquid-card");
         appCard.append(node("strong", `[${item.action}] ${item.description || item.id}`));
         appCard.append(node("p", `요청자: ${item.requestedBy} · 작업: ${item.taskId}`));
         const actions = node("div", undefined, "task-actions");
-        actions.append(button("✓ 승인", "button primary approve", { approval: item.id, revision: String(item.expectedRevision ?? 1) }));
+        actions.append(button("✓ 승인", "button primary approve apple-tactile", { approval: item.id, revision: String(item.expectedRevision ?? 1) }));
         appCard.append(actions);
         approvalTarget.append(appCard);
       }
@@ -936,8 +1062,6 @@ function renderRuns(runsData) {
   const activeCount = runsData?.response?.activeCount || 0;
   if (countBadge) {
     countBadge.textContent = `${activeCount}개 실행중`;
-    // "available" is the installed/available green — an active run is blue
-    // (in progress), idle is neutral.
     countBadge.className = `status-pill ${activeCount > 0 ? "unlinked" : "available"}`;
   }
 
@@ -956,12 +1080,9 @@ function renderRuns(runsData) {
   }
 
   for (const run of runs.slice(0, 15)) {
-    const itemCard = node("div", undefined, "card task-card");
+    const itemCard = node("div", undefined, "card task-card liquid-card");
     const topRow = node("div", undefined, "agent-heading");
     topRow.append(node("strong", run.title || run.id));
-    // Map the raw run status: English "running" is not a status the UI
-    // displays elsewhere, and blue=in-progress is the right tone (not the
-    // green "available").
     const runStatusMeta = {
       running: { text: "진행중", cls: "unlinked" },
       completed: { text: "완료", cls: "available" },
@@ -1040,7 +1161,7 @@ function renderLocalLlmMetrics(metricsData) {
     td.colSpan = 7;
     td.style.padding = "12px";
     td.style.textAlign = "center";
-    td.style.color = "#64748b";
+    td.style.color = "var(--text-subtle)";
     td.textContent = "기록된 로컬 LLM 실행 데이터가 없습니다.";
     tr.append(td);
     tbody.append(tr);
@@ -1049,45 +1170,45 @@ function renderLocalLlmMetrics(metricsData) {
 
   for (const m of metrics.slice(-10).reverse()) {
     const tr = document.createElement("tr");
-    tr.style.borderBottom = "1px solid #1e293b";
-    const statusColor = m.success ? "#34d399" : "#f43f5e";
+    tr.style.borderBottom = "1px solid var(--glass-border-subtle)";
+    const statusColor = m.success ? "var(--accent-emerald)" : "var(--accent-rose)";
     const statusText = m.success ? "성공" : "실패";
     const timeStr = m.timestamp ? m.timestamp.split("T")[1]?.slice(0, 8) || m.timestamp : "-";
 
     const tdTime = document.createElement("td");
     tdTime.style.padding = "6px 8px";
-    tdTime.style.color = "#94a3b8";
+    tdTime.style.color = "var(--text-muted)";
     tdTime.textContent = timeStr;
 
     const tdTitle = document.createElement("td");
     tdTitle.style.padding = "6px 8px";
     tdTitle.style.fontWeight = "600";
-    tdTitle.style.color = "#e2e8f0";
+    tdTitle.style.color = "var(--text-main)";
     tdTitle.textContent = m.taskTitle || "-";
 
     const tdModel = document.createElement("td");
     tdModel.style.padding = "6px 8px";
-    tdModel.style.color = "#38bdf8";
+    tdModel.style.color = "var(--accent-amber)";
     tdModel.textContent = m.model || "qwen3.8:27b";
 
     const tdScale = document.createElement("td");
     tdScale.style.padding = "6px 8px";
-    tdScale.style.color = "#94a3b8";
+    tdScale.style.color = "var(--text-muted)";
     tdScale.textContent = m.taskScale || "-";
 
     const tdElapsed = document.createElement("td");
     tdElapsed.style.padding = "6px 8px";
-    tdElapsed.style.color = "#e2e8f0";
+    tdElapsed.style.color = "var(--text-main)";
     tdElapsed.textContent = m.actualElapsedSeconds ? `${m.actualElapsedSeconds.toFixed(1)}초` : "-";
 
     const tdTokens = document.createElement("td");
     tdTokens.style.padding = "6px 8px";
-    tdTokens.style.color = "#e2e8f0";
+    tdTokens.style.color = "var(--text-main)";
     tdTokens.textContent = m.totalTokens ? m.totalTokens.toLocaleString() : "-";
 
     const tdSpeed = document.createElement("td");
     tdSpeed.style.padding = "6px 8px";
-    tdSpeed.style.color = "#a78bfa";
+    tdSpeed.style.color = "var(--accent-amber-light)";
     tdSpeed.textContent = m.tokensPerSecond ? `${m.tokensPerSecond.toFixed(1)} t/s` : "-";
 
     const tdStatus = document.createElement("td");
@@ -1126,7 +1247,11 @@ function renderHubEcosystem() {
 function renderHubTodos() {
   const hosts = [$("hub-todo-items-host"), $("hub-tasks-todo-items-host")].filter(Boolean);
   if (!hosts.length) return;
-  const html = renderHubTodoListHtml(state.hubTodos);
+  const filteredTodos = state.hubTodos.filter((t) => {
+    const isCompleted = t.status === "completed";
+    return state.taskFilter === "completed" ? isCompleted : !isCompleted;
+  });
+  const html = renderHubTodoListHtml(filteredTodos);
   for (const host of hosts) {
     safeInjectHtml(host, html);
   }
@@ -1149,6 +1274,101 @@ function renderHubSettings() {
   if ($("setting-todo-auto-sync")) {
     $("setting-todo-auto-sync").checked = state.hubConfig.autoSyncMarkdown !== false;
   }
+}
+
+function openIntegrationModal() {
+  const modal = $("integration-modal");
+  if (!modal) return;
+  modal.classList.remove("hidden");
+  renderIntegrationModalConnectors();
+}
+
+function closeIntegrationModal() {
+  const modal = $("integration-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+function renderIntegrationModalConnectors() {
+  const grid = $("integration-connectors-grid");
+  if (!grid) return;
+  grid.replaceChildren();
+
+  const connectors = state.hubOverview?.ecosystem?.connectors || state.hubEcosystem?.connectors || [
+    { id: "openclaw", label: "OpenClaw (Discord/Telegram Bridge)", state: "ready", protocol: "acp", details: "ACP 127.0.0.1:37241" },
+    { id: "hermes-agent", label: "Hermes Agent (NousResearch)", state: "ready", protocol: "openai-v1", details: "Reasoning harness" },
+    { id: "opencodex", label: "OpenCodex (Writer-Critic Harness)", state: "ready", protocol: "cli", details: "Codex CLI" },
+    { id: "obsidian-local-rest-api", label: "Obsidian Local REST API", state: "ready", protocol: "rest", details: "Todo.md & Knowledge Vault" },
+    { id: "docling", label: "Docling / MinerU (OCR Ingestion)", state: "ready", protocol: "cli", details: "Multimodal OCR pipeline" },
+    { id: "ollama", label: "Ollama (RTX 3090)", state: "ready", protocol: "rest", details: "Port 11434 local inference" },
+  ];
+
+  for (const c of connectors) {
+    const card = node("div", undefined, "connector-sheet-card");
+    const top = node("div", undefined, "connector-card-top");
+    top.append(
+      node("span", c.label || c.id, "connector-card-name"),
+      node("span", c.state === "ready" ? "연결됨" : "대기", `status-pill ${c.state === "ready" ? "available" : "waiting"}`)
+    );
+    card.append(top);
+    if (c.details) {
+      card.append(node("p", c.details, "connector-card-desc"));
+    }
+    card.append(node("span", `Protocol: ${c.protocol || "Standard"}`, "connector-card-proto"));
+    grid.append(card);
+  }
+}
+
+function openClarificationModal(todoId) {
+  state.activeClarificationTodoId = todoId;
+  const modal = $("clarification-modal");
+  if (!modal) return;
+  const todo = state.hubTodos.find((t) => t.id === todoId) || { id: todoId, title: "모호한 요청", clarificationQuestions: [] };
+
+  if ($("clarification-todo-title")) {
+    $("clarification-todo-title").textContent = `[${todo.title || todo.id}]`;
+  }
+
+  const container = $("clarification-questions-container");
+  if (container) {
+    container.replaceChildren();
+    const questions = Array.isArray(todo.clarificationQuestions) && todo.clarificationQuestions.length
+      ? todo.clarificationQuestions
+      : [{ id: "q1", question: "검증 대상 모델은 무엇입니까?", options: ["Gemini", "Codex", "Claude"] }];
+
+    for (const q of questions) {
+      const qBlock = node("div", undefined, "clarify-q-block");
+      qBlock.append(node("span", q.question, "clarify-q-title"));
+      const input = node("input", undefined, "clarify-answer-input");
+      input.type = "text";
+      input.placeholder = "직접 답변을 입력하거나 아래 옵션을 선택하세요";
+      input.dataset.questionId = q.id;
+
+      if (Array.isArray(q.options) && q.options.length) {
+        const chips = node("div", undefined, "clarify-options-grid");
+        for (const opt of q.options) {
+          const chip = button(opt, "clarify-opt-chip apple-tactile");
+          chip.type = "button";
+          chip.onclick = () => {
+            input.value = opt;
+            chips.querySelectorAll(".clarify-opt-chip").forEach((c) => c.classList.remove("active"));
+            chip.classList.add("active");
+          };
+          chips.append(chip);
+        }
+        qBlock.append(chips);
+      }
+      qBlock.append(input);
+      container.append(qBlock);
+    }
+  }
+
+  modal.classList.remove("hidden");
+}
+
+function closeClarificationModal() {
+  const modal = $("clarification-modal");
+  if (modal) modal.classList.add("hidden");
+  state.activeClarificationTodoId = null;
 }
 
 async function refreshHub({ force = false } = {}) {
@@ -1196,14 +1416,8 @@ async function refresh({ force = false } = {}) {
   try {
     state.brokerHealth = await api("/health");
     setConnection("online", `브로커 정상 (${BROKER_PORT})`);
-    // This timestamp is updated from tokenStatus.lastSync after a measured
-    // quota response; broker health alone does not refresh quota data.
     if ($("status")) $("status").textContent = `브로커 정상 가동 중 (127.0.0.1:${BROKER_PORT})`;
 
-    // P5: a manual "refresh now" passes ?force=1 so the broker triggers an
-    // in-process live IDE refresh (setForceRefreshHandler) before re-reading
-    // the token state — bypassing the IDE's 5s TTL cache. Normal polling does
-    // not force.
     const tokenPath = force ? "/v1/tokens/status?force=1" : "/v1/tokens/status";
     const runsUrl = workspaceReadUrl("/v1/runs");
     const metricsUrl = workspaceReadUrl("/v1/metrics/local-llm");
@@ -1303,7 +1517,7 @@ async function refresh({ force = false } = {}) {
 }
 
 function bindEvents() {
-  // Sidebar navigation
+  // Navigation dock buttons
   document.querySelectorAll(".nav-link").forEach((link) => {
     link.onclick = () => switchTab(link.dataset.section);
   });
@@ -1316,12 +1530,125 @@ function bindEvents() {
     if (event.key === "Enter") updateWorkspaceContextFromControls();
   });
 
+  // Theme buttons
+  ["titanium", "pearl", "cashmere"].forEach((t) => {
+    const btn = $(`theme-btn-${t}`);
+    if (btn) btn.onclick = () => applyTheme(t);
+  });
+
+  // Squircle Launchers
+  document.querySelectorAll("[data-launcher]").forEach((btn) => {
+    btn.onclick = () => {
+      const target = btn.dataset.launcher;
+      if (target === "agents") switchTab("agents");
+      else if (target === "obsidian") switchTab("tasks");
+      else if (target === "playbooks") switchTab("tasks");
+      else if (target === "runs") switchTab("tasks");
+      else if (target === "settings") switchTab("settings");
+    };
+  });
+  if ($("launcher-hub-folder")) {
+    $("launcher-hub-folder").onclick = () => openIntegrationModal();
+  }
+  if ($("btn-close-integration-modal")) $("btn-close-integration-modal").onclick = closeIntegrationModal;
+  if ($("btn-dismiss-integration-modal")) $("btn-dismiss-integration-modal").onclick = closeIntegrationModal;
+
+  if ($("btn-close-clarification-modal")) $("btn-close-clarification-modal").onclick = closeClarificationModal;
+  if ($("btn-cancel-clarification")) $("btn-cancel-clarification").onclick = closeClarificationModal;
+  if ($("btn-submit-clarification")) {
+    $("btn-submit-clarification").onclick = async () => {
+      if (!state.activeClarificationTodoId) return;
+      const inputs = document.querySelectorAll("#clarification-questions-container input.clarify-answer-input");
+      const answers = [];
+      inputs.forEach((inp) => {
+        const val = inp.value.trim();
+        if (val) answers.push({ id: inp.dataset.questionId, answer: val });
+      });
+      if (!answers.length) {
+        showToast("답변을 입력하거나 옵션을 선택하세요.", true);
+        return;
+      }
+      try {
+        await api(`/v1/hub/todos/${encodeURIComponent(state.activeClarificationTodoId)}/clarify`, {
+          method: "POST",
+          body: JSON.stringify({ answers }),
+        });
+        closeClarificationModal();
+        await refreshHub({ force: true });
+        showToast("답변이 저장되고 자율 배당 요건이 재평가되었습니다.");
+      } catch (err) {
+        showToast(`답변 제출 실패: ${err.message}`, true);
+      }
+    };
+  }
+  if ($("btn-open-token-detail")) $("btn-open-token-detail").onclick = () => switchTab("tokens");
+  if ($("btn-quick-tokens-jump")) $("btn-quick-tokens-jump").onclick = () => switchTab("tokens");
+
+  // Ingest forms
+  if ($("omni-command-form")) {
+    $("omni-command-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const input = $("command-input");
+      const val = input?.value?.trim();
+      if (!val) return;
+      try {
+        await api("/v1/hub/ingest", {
+          method: "POST",
+          body: JSON.stringify({ title: val, rawText: val, originChannel: "omni-command" }),
+        });
+        input.value = "";
+        showToast("새 할 일이 등록되었습니다.");
+        await refreshHub({ force: true });
+      } catch (err) {
+        showToast(`등록 실패: ${err.message}`, true);
+      }
+    };
+  }
+  if ($("task-ingest-form")) {
+    $("task-ingest-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const input = $("task-input");
+      const val = input?.value?.trim();
+      if (!val) return;
+      try {
+        await api("/v1/hub/ingest", {
+          method: "POST",
+          body: JSON.stringify({ title: val, rawText: val, originChannel: "tasks-ingest" }),
+        });
+        input.value = "";
+        showToast("새 작업이 허브에 등록되었습니다.");
+        await refreshHub({ force: true });
+      } catch (err) {
+        showToast(`등록 실패: ${err.message}`, true);
+      }
+    };
+  }
+
+  // Segmented Task Filter Buttons
+  const filterActiveBtn = $("filter-tasks-active");
+  const filterCompletedBtn = $("filter-tasks-completed");
+  if (filterActiveBtn && filterCompletedBtn) {
+    filterActiveBtn.onclick = () => {
+      state.taskFilter = "active";
+      filterActiveBtn.classList.add("active");
+      filterCompletedBtn.classList.remove("active");
+      renderTasks();
+      renderHubTodos();
+    };
+    filterCompletedBtn.onclick = () => {
+      state.taskFilter = "completed";
+      filterCompletedBtn.classList.add("active");
+      filterActiveBtn.classList.remove("active");
+      renderTasks();
+      renderHubTodos();
+    };
+  }
+
   // Quick nav buttons on home tab
   document.addEventListener("click", async (e) => {
     const quickBtn = e.target.closest(".quick-nav-btn");
     if (quickBtn && quickBtn.dataset.target) switchTab(quickBtn.dataset.target);
 
-    // Host integrations one-click buttons
     const claudeBtn = e.target.closest(".register-claude");
     if (claudeBtn) {
       try {
@@ -1357,31 +1684,13 @@ function bindEvents() {
       }
     }
 
-    // Hub Clarify button
+    // Hub Clarify button -> opens clarification modal
     const clarifyBtn = e.target.closest(".hub-btn-clarify");
     if (clarifyBtn) {
       const todoId = clarifyBtn.dataset.hubClarifyId;
-      const card = clarifyBtn.closest(".hub-todo-card");
-      const inputs = card ? card.querySelectorAll(".hub-clarify-input") : [];
-      const answers = [];
-      inputs.forEach((input) => {
-        const qId = input.dataset.questionId;
-        const val = input.value.trim();
-        if (qId && val) answers.push({ id: qId, answer: val });
-      });
-      if (answers.length === 0) {
-        showToast("최소 1개 이상의 질문에 답변을 입력하세요.", true);
+      if (todoId) {
+        openClarificationModal(todoId);
         return;
-      }
-      try {
-        await api(`/v1/hub/todos/${encodeURIComponent(todoId)}/clarify`, {
-          method: "POST",
-          body: JSON.stringify({ answers }),
-        });
-        await refreshHub({ force: true });
-        showToast("답변이 저장되고 자율 배당 요건이 재평가되었습니다.");
-      } catch (err) {
-        showToast(`답변 저장 실패: ${err.message}`, true);
       }
     }
 
@@ -1489,7 +1798,7 @@ function bindEvents() {
           const vaults = eco?.vaults || [];
           if (vaults.length === 0) {
             const emptyP = document.createElement("p");
-            emptyP.style.color = "#94a3b8";
+            emptyP.style.color = "var(--text-muted)";
             emptyP.style.fontSize = "12px";
             emptyP.textContent = "감지된 Obsidian 볼트가 없습니다.";
             resultsBox.appendChild(emptyP);
@@ -1503,18 +1812,18 @@ function bindEvents() {
               row.style.display = "flex";
               row.style.justifyContent = "space-between";
               row.style.alignItems = "center";
-              row.style.background = "#0f172a";
+              row.style.background = "var(--glass-surface-subtle)";
               row.style.padding = "6px 10px";
               row.style.borderRadius = "4px";
-              row.style.border = "1px solid #1e293b";
+              row.style.border = "1px solid var(--glass-border-subtle)";
 
               const span = document.createElement("span");
               span.style.fontSize = "12px";
-              span.style.color = "#f8fafc";
+              span.style.color = "var(--text-main)";
               span.textContent = `${v.name} (${v.path})`;
 
               const chooseBtn = document.createElement("button");
-              chooseBtn.className = "button secondary compact-btn";
+              chooseBtn.className = "button secondary compact-btn apple-tactile";
               chooseBtn.type = "button";
               chooseBtn.textContent = "선택";
               chooseBtn.onclick = () => {
@@ -1553,7 +1862,6 @@ function bindEvents() {
     };
   }
 
-  // Refresh buttons
   if ($("connection-refresh")) $("connection-refresh").onclick = () => void refresh();
   if ($("token-refresh-btn")) $("token-refresh-btn").onclick = async () => {
     showToast("실시간 쿼터를 갱신 중입니다…");
@@ -1561,11 +1869,6 @@ function bindEvents() {
     showToast("AI 모델 쿼터가 최신 상태로 갱신되었습니다.");
   };
 
-  // ── B5: provider block visibility (per-card toggle, persisted) ──────────
-  // The four static provider blocks on the tokens tab each carry a header
-  // toggle; dynamic external provider cards are discovered via their
-  // .provider-toggle[data-provider] button. State lives in the module-scope
-  // providerVisibility map so renderers outside bindEvents can apply it.
   const syncProviderVisibility = (k, visible) => {
     providerVisibility[k] = visible;
     persistProviderVisibility();
@@ -1577,7 +1880,6 @@ function bindEvents() {
     btn.onclick = () => syncProviderVisibility(k, providerVisibility[k] !== false);
   });
   if ($("provider-visibility-reset")) $("provider-visibility-reset").onclick = () => {
-    // Reset both the four static keys and any dynamic external-* keys.
     for (const k of Object.keys(providerVisibility)) providerVisibility[k] = true;
     persistProviderVisibility();
     applyProviderVisibility();
@@ -1585,7 +1887,6 @@ function bindEvents() {
   };
   applyProviderVisibility();
 
-  // Notification Toggles (Quick and Settings)
   const syncNotifyToggles = (checked) => {
     const previous = state.notifyOnFullTokens;
     state.notifyOnFullTokens = checked;
@@ -1614,7 +1915,6 @@ function bindEvents() {
     $("setting-token-notify-toggle").onchange = (e) => syncNotifyToggles(e.target.checked);
   }
 
-  // Test Notification Button
   if ($("btn-test-notification")) {
     $("btn-test-notification").onclick = () => {
       requestNotificationPermission();
@@ -1624,7 +1924,6 @@ function bindEvents() {
     };
   }
 
-  // Autostart Toggle
   if ($("setting-autostart-toggle")) {
     $("setting-autostart-toggle").onchange = async (e) => {
       const enabled = e.target.checked;
@@ -1642,7 +1941,6 @@ function bindEvents() {
     };
   }
 
-  // Poll Interval Selector
   const pollSelect = $("setting-poll-interval-select");
   if (pollSelect) {
     pollSelect.value = String(state.pollInterval);
@@ -1652,11 +1950,6 @@ function bindEvents() {
     };
   }
 
-  // ── Taskbar visibility (OS-common: Win taskbar / macOS Dock / Linux panel) ──
-  // Tauri renders the window; show()/setSkipTaskbar() drive the native window
-  // manager on whichever OS runs the app, so one toggle covers every platform.
-  // In a plain browser (dev without the Tauri shell) the API is absent and the
-  // toggle is a no-op.
   const taskbarToggle = $("setting-taskbar-toggle");
   const isTauriShell = () => {
     try {
@@ -1687,8 +1980,6 @@ function bindEvents() {
     };
   }
 
-  // Gauge ticks toggle (5h 5 segments / weekly 7). Persisted; re-renders the
-  // tokens tab immediately.
   const gaugeToggle = $("setting-gauge-ticks");
   if (gaugeToggle) {
     gaugeToggle.checked = gaugeTicksEnabled();
@@ -1698,7 +1989,6 @@ function bindEvents() {
     };
   }
 
-  // ── External provider form (Hermes custom-endpoint style) ─────────────
   const extErr = $("ext-error");
   const extAdd = $("ext-add");
   const readForm = () => ({
@@ -1735,13 +2025,11 @@ function bindEvents() {
       void testExternalProvider();
     };
   }
-  // Clicking the empty-state hint jumps to the settings tab.
   const extToggle = $("external-providers-toggle");
   if (extToggle) {
     extToggle.onclick = () => switchTab("settings");
   }
 
-  // Settings integration buttons
   if ($("btn-settings-claude")) {
     $("btn-settings-claude").onclick = async () => {
       try {
@@ -1768,7 +2056,6 @@ function bindEvents() {
     };
   }
 
-  // Log tab buttons
   if ($("log-refresh-btn")) $("log-refresh-btn").onclick = () => void refreshLogs();
   if ($("log-copy-btn")) {
     $("log-copy-btn").onclick = async () => {
@@ -1777,7 +2064,6 @@ function bindEvents() {
     };
   }
 
-  // Main agent selection change
   if ($("main-agent-select")) {
     $("main-agent-select").onchange = (e) => {
       state.mainProvider = e.target.value;
@@ -1785,7 +2071,6 @@ function bindEvents() {
     };
   }
 
-  // Task creation
   if ($("create")) {
     $("create").onclick = async () => {
       try {
@@ -1807,7 +2092,6 @@ function bindEvents() {
     };
   }
 
-  // Global action delegations
   document.addEventListener("click", async (event) => {
     const control = event.target.closest("button");
     if (!control) return;
@@ -1820,9 +2104,6 @@ function bindEvents() {
       } else if (control.classList.contains("copy-chatgpt-mcp")) {
         await copyToClipboard(`${API}/mcp`, `ChatGPT 맞춤형 MCP URL ('${API}/mcp')이 복사되었습니다.`);
       } else if (control.classList.contains("copy-chatgpt-stdio")) {
-        // Fetch the live launch spec from the broker: the real node runtime and
-        // mcp-server.js path for THIS installation (the old snippet hardcoded
-        // a path that does not exist).
         const spec = await api("/v1/integrations/chatgpt/spec").catch(() => null);
         const entry = spec?.spec || spec?.snippet || { command: "node", args: [`${API}/mcp`] };
         await copyToClipboard(JSON.stringify({ mcpServers: { "integrated-power": entry } }, null, 2), "ChatGPT STDIO 설정 JSON이 복사되었습니다.");
@@ -1862,12 +2143,6 @@ function bindEvents() {
   });
 }
 
-// ── B5: provider block visibility (module scope so all renderers can apply) ──
-// The four static provider blocks on the tokens tab each carry a header
-// toggle; dynamic external provider cards are discovered via their
-// .provider-toggle[data-provider] button. One localStorage key, default all
-// visible — mirrors the IDE viewConfig.{showAntigravity,showCodex,showClaude,
-// showLocalLlm} semantics (`!== false` means visible).
 const PROVIDER_VIS_KEY = "ip_provider_visibility";
 const PROVIDER_KEYS = ["antigravity", "openai", "claude", "local"];
 const loadProviderVisibility = () => {
@@ -1885,7 +2160,7 @@ const persistProviderVisibility = () => {
   try {
     localStorage.setItem(PROVIDER_VIS_KEY, JSON.stringify(providerVisibility));
   } catch {
-    /* storage unavailable — visibility is non-critical */
+    /* non-critical */
   }
 };
 const providerVisibility = loadProviderVisibility();
@@ -1900,8 +2175,6 @@ const applyProviderVisibility = () => {
       btn.classList.toggle("is-off", !visible);
     }
   }
-  // Dynamic external provider cards (B5-compatible: hidden cards are simply
-  // display:none, so the same "모두 표시" reset restores them).
   document.querySelectorAll(".provider-card-external").forEach((card) => {
     const btn = card.querySelector(".provider-toggle[data-provider]");
     const key = btn?.dataset.provider;
@@ -1914,14 +2187,6 @@ const applyProviderVisibility = () => {
   });
 };
 
-// ── External (user-registered) quota providers ──────────────────────────
-// The UI registers an arbitrary http(s) endpoint (OpenAI usage API, OpenRouter,
-// a self-hosted gateway, a local JSON file served over http). The broker fetches
-// it server-side at GET /v1/providers/external?url=... (loopback origin, so
-// browser CORS never applies); the UI only sees the JSON payload and parses it
-// with the shared pure parser (shared/quota/external.ts). Registration lives in
-// localStorage; rendering uses the DOM element API only so cards stay
-// discoverable by the B5 visibility toggles.
 const EXTERNAL_KEY = "ip_external_providers";
 
 const loadExternalProviders = () => {
@@ -1945,7 +2210,7 @@ const externalCard = (p) => {
   const existing = document.getElementById(`provider-external-${p.id}`);
   if (existing) return existing;
   const card = document.createElement("div");
-  card.className = "card provider-card provider-card-external";
+  card.className = "card provider-card provider-card-external liquid-card";
   card.id = `provider-external-${p.id}`;
   card.dataset.externalId = p.id;
   const header = document.createElement("div");
@@ -1960,13 +2225,10 @@ const externalCard = (p) => {
   statusTag.textContent = "연결 중…";
   statusTag.id = `external-status-${p.id}`;
   const toggle = document.createElement("button");
-  toggle.className = "provider-toggle";
+  toggle.className = "provider-toggle apple-tactile";
   toggle.dataset.provider = `external-${p.id}`;
   toggle.title = "이 블록 표시/숨김";
   toggle.textContent = "숨기기";
-  // Bind inline: dynamic cards are created after bindEvents() ran, so the
-  // static querySelectorAll pass never reaches them (delete button works
-  // because it is inline here).
   toggle.onclick = () => {
     const k = toggle.dataset.provider;
     const visible = providerVisibility[k] !== false;
@@ -1976,7 +2238,7 @@ const externalCard = (p) => {
     toggle.textContent = visible ? "숨기기" : "표시";
   };
   const del = document.createElement("button");
-  del.className = "provider-toggle provider-toggle-delete";
+  del.className = "provider-toggle provider-toggle-delete apple-tactile";
   del.title = "이 외부 provider를 제거합니다";
   del.textContent = "✕";
   del.onclick = (e) => {
@@ -2049,7 +2311,6 @@ const renderExternalCard = (p) => {
   if (!data) {
     if (statusTag) {
       if (!quotaTargetOf(p)) {
-        // Model-only provider: no quota endpoint configured, so no "연결 중" spinner.
         statusTag.textContent = models && models.length ? `정상 · ${models.length}개 모델` : "모델 조회";
         statusTag.className = "provider-state-tag" + (models && models.length ? " online" : "");
       } else {
@@ -2061,8 +2322,6 @@ const renderExternalCard = (p) => {
     return;
   }
   if (!data.ok) {
-    // Broker down is NOT a provider error: a "Failed to fetch" from the
-    // broker transport would blame the remote endpoint for our own outage.
     if (!state.brokerOnline) {
       if (statusTag) {
         statusTag.textContent = "브로커 오프라인";
@@ -2082,7 +2341,7 @@ const renderExternalCard = (p) => {
       statusTag.textContent = stale ? "브로커 재시작 필요" : "quota 오류";
       statusTag.className = "provider-state-tag critical";
       statusTag.title = stale
-        ? `브로커가 외부 provider 기능(P7) 없이 기동 중입니다. ${STALE_BROKER_HINT}`
+        ? `브로커가 외부 provider 기능 없이 기동 중입니다. ${STALE_BROKER_HINT}`
         : (data.error || "quota fetch failed");
     }
     const err = document.createElement("p");
@@ -2138,10 +2397,7 @@ const renderExternalCard = (p) => {
 };
 const externalDueAt = {};
 const externalSeen = new Set();
-// Quota endpoint for a stored provider: new providers carry quotaUrl; legacy
-// providers (pre-Hermes form) persisted only `url`, which was the quota source.
 const quotaTargetOf = (p) => p.quotaUrl || (p.baseUrl ? undefined : p.url);
-// Broker-side fetch of an external URL (CORS-free). `key` adds Authorization.
 const fetchExternal = (url, key) =>
   api(`/v1/providers/external?url=${encodeURIComponent(url)}${key ? `&key=${encodeURIComponent(key)}` : ""}`);
 
@@ -2152,14 +2408,11 @@ const pollExternalProviders = async () => {
   if (!due.length) return;
   for (const p of due) {
     externalDueAt[p.id] = Date.now() + (p.pollMs || 60_000);
-    // Quota facet. New providers carry quotaUrl (or none); legacy providers
-    // persisted before the Hermes-style form carry only `url` — that URL was
-    // the quota source, so it keeps being polled.
     const quotaTarget = quotaTargetOf(p);
     if (quotaTarget) {
       try {
         const res = await fetchExternal(quotaTarget, p.apiKey);
-        brokerStale = false; // a real 200 proves the route exists
+        brokerStale = false;
         state.externalData[p.id] = parseExternalPayload(p.name, res && res.payload !== undefined ? res.payload : res);
       } catch (error) {
         if (isStaleBrokerError(error)) brokerStale = true;
@@ -2172,8 +2425,6 @@ const pollExternalProviders = async () => {
         };
       }
     }
-    // Model-discovery facet: OpenAI /v1/models (or Ollama /api/tags), same
-    // data[].id extraction the IDE TokenManager uses for LM Studio / vLLM.
     if (p.discoverModels !== false && p.baseUrl) {
       const candidates = modelDiscoveryUrls(p.baseUrl);
       let found = undefined;
@@ -2185,7 +2436,6 @@ const pollExternalProviders = async () => {
           if (list.length) { found = list; break; }
         } catch (error) {
           if (isStaleBrokerError(error)) brokerStale = true;
-          /* try next candidate */
         }
       }
       state.externalModels[p.id] = found || state.externalModels[p.id] || [];
@@ -2215,7 +2465,7 @@ const addExternalProvider = (name, baseUrl, quotaUrl, apiKey, defaultModel, disc
   state.externalProviders.push(spec);
   persistExternalProviders();
   showToast(`외부 provider "${spec.name}"가 등록되었습니다.`);
-  externalDueAt[spec.id] = 0; // poll immediately
+  externalDueAt[spec.id] = 0;
   void pollExternalProviders();
   renderExternalProviders();
   return true;
@@ -2232,7 +2482,6 @@ const deleteExternalProvider = (id) => {
   renderExternalProviders();
 };
 
-// ── Provider test (Hermes-style): connect + model discovery + optional quota ──
 const testExternalProvider = async () => {
   const resultBox = $("ext-test-result");
   const name = $("ext-name")?.value?.trim() || "테스트";
@@ -2246,7 +2495,7 @@ const testExternalProvider = async () => {
   const line = (text, tone) => {
     const row = document.createElement("p");
     row.style.margin = "2px 0";
-    row.style.color = tone === "ok" ? "#34d399" : tone === "err" ? "#f87171" : "#cbd5e1";
+    row.style.color = tone === "ok" ? "var(--accent-emerald)" : tone === "err" ? "var(--accent-rose)" : "var(--text-muted)";
     row.textContent = text;
     resultBox.appendChild(row);
   };
@@ -2260,10 +2509,7 @@ const testExternalProvider = async () => {
     line("입력값 오류: " + (error || ""), "err");
     return;
   }
-  // 0) Guard: a broker built before the external route can't serve the test at
-  // all — it answers every /v1/providers/external call with catch-all 404.
   let staleSeen = false;
-  // 1) Model discovery: GET /v1/models (OpenAI-compatible) or /api/tags (Ollama).
   if (spec.discoverModels) {
     let discovered = false;
     for (const candidate of modelDiscoveryUrls(spec.baseUrl)) {
@@ -2281,17 +2527,14 @@ const testExternalProvider = async () => {
         }
       } catch (error) {
         if (isStaleBrokerError(error)) staleSeen = true;
-        /* try next */
       }
     }
     if (staleSeen) {
       line(`⚠️ 브로커 재시작 필요 — ${STALE_BROKER_HINT}`, "err");
     } else if (!discovered) {
-      // If no models found yet, note it (server may not expose /models).
       line("⚠️ 모델 목록 조회 불가 (서버가 /v1/models·/api/tags를 안 열 수 있음)", "info");
     }
   }
-  // 2) Quota facet: parse the quota endpoint if one is configured.
   if (spec.quotaUrl) {
     try {
       const res = await fetchExternal(spec.quotaUrl, spec.apiKey);
@@ -2423,6 +2666,9 @@ window.triggerPrewarmWindow = async function(windowId) {
   }
 };
 
+// Initial theme setup
+applyTheme(localStorage.getItem("ipcc.liquidTheme") || "titanium");
+
 // Initial setup
 state.externalProviders = loadExternalProviders();
 bindEvents();
@@ -2437,7 +2683,7 @@ renderHubEcosystem();
 renderHubTodos();
 renderHubPlaybooks();
 renderHubSettings();
-// Restore the persisted taskbar/tray preference (Tauri shell only).
+
 if (localStorage.getItem("ip_taskbar_visible") === "false") {
   try {
     if (isTauri()) {
@@ -2455,4 +2701,3 @@ pollTimer = setInterval(refresh, state.pollInterval);
 setInterval(() => {
   void pollExternalProviders().catch(() => {});
 }, 5000);
-
