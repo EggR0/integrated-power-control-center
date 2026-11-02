@@ -62,6 +62,7 @@ const quotaSettings = mergeQuotaSettings({
   notifyOnFull: localStorage.getItem("ip_notify_full_tokens") !== "false",
   prewarmModes: {
     antigravity: localStorage.getItem("ip_prewarm_mode_antigravity") || localStorage.getItem("ip_prewarm_mode"),
+    argon: localStorage.getItem("ip_prewarm_mode_argon") || localStorage.getItem("ip_prewarm_mode"),
     opus: localStorage.getItem("ip_prewarm_mode_opus") || localStorage.getItem("ip_prewarm_mode"),
     codex: localStorage.getItem("ip_prewarm_mode_codex") || localStorage.getItem("ip_prewarm_mode"),
   },
@@ -69,11 +70,12 @@ const quotaSettings = mergeQuotaSettings({
 
 const prefixOf = {
   "gemini-5h": "antigravity", "gemini-weekly": "antigravityWeekly",
+  "argon-5h": "argon", "argon-weekly": "argonWeekly",
   "opus-5h": "opus", "opus-weekly": "opusWeekly",
   "codex-5h": "codex", "codex-weekly": "codexWeekly",
-  "antigravity": "antigravity", "opus": "opus", "codex": "codex",
+  "antigravity": "antigravity", "argon": "argon", "opus": "opus", "codex": "codex",
 };
-const prewarmModelByWindow = { "gemini-5h": "antigravity", "opus-5h": "opus", "codex-5h": "codex" };
+const prewarmModelByWindow = { "gemini-5h": "antigravity", "argon-5h": "argon", "argon-weekly": "argon", "opus-5h": "opus", "codex-5h": "codex" };
 
 const state = {
   capabilities: [],
@@ -89,6 +91,7 @@ const state = {
   mainProvider: "google.antigravity.ide",
   brokerOnline: false,
   lastSyncAt: null,
+  tokenStatusError: "",
   activeTab: "tokens", // DEFAULT ACTIVE TAB
   // External (user-registered) providers: { id, name, baseUrl, quotaUrl?, apiKey?, defaultModel?, discoverModels, pollMs, enabled }[]
   externalProviders: [],
@@ -436,6 +439,8 @@ function renderTokens() {
   const windows = {
     "gemini-5h": buildTokenMetric("5Hours", ts, "antigravity", "Gemini 5Hours", "antigravityWeekly"),
     "gemini-weekly": buildTokenMetric("Weekly", ts, "antigravityWeekly", "Gemini Weekly"),
+    "argon-5h": buildTokenMetric("5Hours", ts, "argon", "Argon 4 5Hours", "argonWeekly"),
+    "argon-weekly": buildTokenMetric("Weekly", ts, "argonWeekly", "Argon 4 Weekly"),
     "opus-5h": buildTokenMetric("5Hours", ts, "opus", "Claude 5Hours", "opusWeekly"),
     "opus-weekly": buildTokenMetric("Weekly", ts, "opusWeekly", "Claude Weekly"),
     "codex-5h": buildTokenMetric("5Hours", ts, "codex", "ChatGPT 5Hours", "codexWeekly"),
@@ -444,12 +449,16 @@ function renderTokens() {
   // One label for "no value reported" — a no-data window is NOT zero and is
   // not the same as an error; keep the wording consistent across labels,
   // bars, and reset stamps.
-  const noDataText = "쿼터 대기 중";
+  const noDataText = state.tokenStatusError ? "쿼터 갱신 실패" : "쿼터 대기 중";
 
+  const argon5hRow = $("row-argon-5h");
+  if (argon5hRow) {
+    argon5hRow.style.display = windows["argon-5h"].unavailable ? "none" : "";
+  }
   for (const [id, m] of Object.entries(windows)) {
     const label = $(`label-${id}`);
     if (label) {
-      label.textContent = m.unavailable ? noDataText : `${m.percentage.toFixed(2)}% remaining`;
+      label.textContent = m.unavailable ? noDataText : m.isWeeklyExhausted ? "0.00% remaining (Weekly exhausted)" : `${m.percentage.toFixed(2)}% remaining`;
       label.title = m.tooltip; // A7 tooltip (hover)
     }
     const reset = $(`reset-${id}`);
@@ -462,15 +471,16 @@ function renderTokens() {
     const prewarmButton = $(`prewarm-${id}`);
     if (prewarmButton) {
       const model = prewarmModelByWindow[id];
-      const target = PREWARM_TARGETS.find((candidate) => candidate.model === model);
+      const windowType = id.endsWith("-weekly") ? "weekly" : "5h";
+      const target = PREWARM_TARGETS.find((candidate) => candidate.model === model && (candidate.window === windowType || (!candidate.window && windowType === "5h")));
       const allowed = Boolean(target && canTriggerPrewarm(m));
       const reason = m.unavailable
         ? "쿼터 정보를 확인할 수 없습니다."
         : m.isWeeklyExhausted
           ? "주간 쿼터 소진으로 프리웜을 실행할 수 없습니다."
-          : m.refreshFull && m.refreshFull !== "· Ready"
-            ? `5시간 재충전 중입니다 (${m.refreshFull}).`
-            : "5시간 쿼터가 100% Ready일 때 실행할 수 있습니다.";
+          : !allowed && m.refreshFull
+            ? `재충전 중입니다 (${m.refreshFull}).`
+            : "쿼터가 100%이고 시간이 꽉 차 있을 때 실행할 수 있습니다.";
       prewarmButton.disabled = !allowed;
       prewarmButton.title = allowed
         ? "브로커에 프리웜 실행을 요청합니다. 실제 실행 여부와 원격 타이머 시작은 확인되지 않습니다."
@@ -480,7 +490,8 @@ function renderTokens() {
     }
     const bar = $(`bar-${id}`);
     if (bar) {
-      bar.style.width = `${Math.max(0, Math.min(100, m.percentage))}%`;
+      const displayPct = typeof m.displayPercentage === "number" ? m.displayPercentage : m.percentage;
+      bar.style.width = `${Math.max(0, Math.min(100, displayPct ?? 0))}%`;
       // Unified tone thresholds (<=15 critical, 15-35 caution) via the shared
       // capacityTone — replaces the old hard-coded <20% warning.
       bar.classList.toggle("warning", m.tone === "warning");
@@ -563,19 +574,19 @@ function renderTokens() {
 
   // 5. Anthropic Claude Direct Usage
   const du = ts.claudeDirectUsage || ts.directUsage;
-  const hasClaudeData = du && ((du.sevenDaysTokens > 0) || (du.eventCount > 0) || (du.status === "measured") || (du.sevenDays?.eventCount > 0));
+  const hasClaudeData = du && ((du.sevenDaysTokens > 0) || (du.eventCount > 0) || (du.today?.eventCount > 0) || (du.sevenDays?.eventCount > 0));
   
   const claudeTag = $("claude-status-tag");
   if (claudeTag) {
     // No events can mean "not used" or "not installed" — do not claim a
     // measurement state. Measured / no-records / neutral, Korean to match.
-    const tagText = hasClaudeData ? "측정 중" : "사용 기록 없음";
+    const tagText = hasClaudeData ? "기록 있음" : "기록 없음";
     claudeTag.textContent = tagText;
-    claudeTag.className = `provider-state-tag ${hasClaudeData ? "online" : ""}`;
+    claudeTag.className = "provider-state-tag";
   }
 
   const todayTok = du?.todayTokens ?? du?.today?.totalTokens ?? 0;
-  const todayBillable = du?.todayPaidTokens ?? du?.today?.outputTokens ?? 0;
+  const todayBillable = du?.todayPaidTokens ?? du?.today?.billableTokens;
   const sevenDayTok = du?.sevenDaysTokens ?? du?.sevenDays?.totalTokens ?? 0;
   const sevenDayEvents = du?.eventCount ?? du?.sevenDays?.eventCount ?? 0;
 
@@ -587,7 +598,7 @@ function renderTokens() {
       node("span", "tokens", "unit-label")
     );
   }
-  if ($("claude-today-billable")) $("claude-today-billable").textContent = todayBillable.toLocaleString();
+  if ($("claude-today-billable")) $("claude-today-billable").textContent = todayBillable === undefined ? "Unavailable" : todayBillable.toLocaleString();
   if ($("claude-7d-tokens")) {
     const el = $("claude-7d-tokens");
     el.replaceChildren();
@@ -1104,7 +1115,8 @@ async function refresh({ force = false } = {}) {
   try {
     state.brokerHealth = await api("/health");
     setConnection("online", `브로커 정상 (${BROKER_PORT})`);
-    state.lastSyncAt = new Date();
+    // This timestamp is updated from tokenStatus.lastSync after a measured
+    // quota response; broker health alone does not refresh quota data.
     if ($("status")) $("status").textContent = `브로커 정상 가동 중 (127.0.0.1:${BROKER_PORT})`;
 
     // P5: a manual "refresh now" passes ?force=1 so the broker triggers an
@@ -1119,7 +1131,7 @@ async function refresh({ force = false } = {}) {
       api("/v1/capabilities").catch(() => ({ capabilities: [] })),
       api("/v1/tasks").catch(() => ({ tasks: [] })),
       api("/v1/approvals").catch(() => ({ approvals: [] })),
-      api(tokenPath).catch(() => ({ tokenStatus: null })),
+      api(tokenPath).then((response) => ({ ...response, error: undefined })).catch((error) => ({ tokenStatus: null, error })),
       runsUrl ? api(runsUrl).then((response) => ({ response })).catch((error) => ({ error })) : Promise.resolve(unselected()),
       metricsUrl ? api(metricsUrl).then((response) => ({ response })).catch((error) => ({ error })) : Promise.resolve(unselected()),
       api("/v1/workspaces").catch(() => ({ workspaces: [] })),
@@ -1136,6 +1148,9 @@ async function refresh({ force = false } = {}) {
     if (tokenRes && tokenRes.tokenStatus) {
       state.previousTokenStatus = state.tokenStatus;
       state.tokenStatus = tokenRes.tokenStatus;
+      state.tokenStatusError = "";
+      const measuredAt = Date.parse(tokenRes.tokenStatus.lastSync || "");
+      state.lastSyncAt = Number.isFinite(measuredAt) && measuredAt > 0 ? new Date(measuredAt) : null;
       if (state.brokerHealth?.capabilities?.includes("quota.notifications.claim")) {
         try {
           const claim = await api("/v1/notifications/quota-refill", { method: "POST", body: JSON.stringify({}) });
@@ -1155,6 +1170,11 @@ async function refresh({ force = false } = {}) {
       } else {
         checkTokenFullNotification(state.previousTokenStatus, state.tokenStatus);
       }
+    } else {
+      state.previousTokenStatus = state.tokenStatus;
+      state.tokenStatus = null;
+      state.tokenStatusError = tokenRes?.error?.message || "쿼터 측정 소스가 응답하지 않았습니다.";
+      state.lastSyncAt = null;
     }
 
     renderTokens();
@@ -1166,6 +1186,10 @@ async function refresh({ force = false } = {}) {
     renderLocalLlmMetrics(metricsRes);
     if (state.activeTab === "logs") void refreshLogs();
   } catch (error) {
+    state.previousTokenStatus = state.tokenStatus;
+    state.tokenStatus = null;
+    state.tokenStatusError = error.message || "브로커에서 쿼터 측정을 읽지 못했습니다.";
+    state.lastSyncAt = null;
     setConnection("offline", `브로커 오프라인 (${BROKER_PORT})`);
     if ($("status")) $("status").textContent =
       `브로커 연결 대기 중 (127.0.0.1:${BROKER_PORT}) — 브로커가 기동하면 자동 복구됩니다`;
@@ -2046,6 +2070,7 @@ function renderPrewarmToolbar() {
 
   const targets = [
     { key: "antigravity", label: "Gemini" },
+    { key: "argon", label: "Argon 4" },
     { key: "opus", label: "Claude" },
     { key: "codex", label: "ChatGPT" },
   ];
@@ -2083,13 +2108,14 @@ function renderPrewarmToolbar() {
 }
 
 window.triggerPrewarmWindow = async function(windowId) {
-  const prefix = prefixOf[windowId] || windowId;
+  const prefix = prewarmModelByWindow[windowId] || prefixOf[windowId] || windowId;
   if (!prefix) return;
-  showToast(`${prefix} 5시간 윈도우 프리웜 요청 중...`);
+  const windowType = String(windowId).endsWith("-weekly") ? "weekly" : "5h";
+  showToast(`${prefix} ${windowType === "weekly" ? "주간(168시간)" : "5시간"} 윈도우 프리웜 요청 중...`);
   try {
     const res = await api("/v1/tokens/prewarm", {
       method: "POST",
-      body: JSON.stringify({ model: prefix, manual: true, idempotencyKey: crypto.randomUUID(), expectedSettingsRevision: state.quotaSettingsRevision }),
+      body: JSON.stringify({ model: prefix, window: windowType, manual: true, idempotencyKey: crypto.randomUUID(), expectedSettingsRevision: state.quotaSettingsRevision }),
     });
     if (res.status === "dispatched") showToast(`${prefix} 프리웜 요청을 브로커에 전달했습니다${res.timerConfirmed ? " (타이머 확인됨)" : " (타이머 시작은 확인되지 않음)"}.`);
     else if (res.status === "duplicate") showToast(`${prefix} 프리웜 요청은 이미 처리되었습니다.`);

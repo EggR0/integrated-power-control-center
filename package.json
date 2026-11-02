@@ -1,7 +1,7 @@
 {
   "name": "integrated-power-control-center",
   "private": true,
-  "version": "0.9.22",
+  "version": "0.11.6",
   "scripts": {
     "dev": "node ./scripts/dev.js",
     "build": "node ./scripts/build-ui.js",
@@ -22,11 +22,11 @@
     "vite": "^6.1.0"
   },
   "dependencies": {
-    "@ag-ui/core": "^0.0.57",
     "@a2a-js/sdk": "^1.0.1",
+    "@ag-ui/core": "^0.0.57",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "gray-matter": "^4.0.3",
     "@tauri-apps/api": "^2.11.1",
+    "gray-matter": "^4.0.3",
     "zod": "^4.4.3"
   }
 }

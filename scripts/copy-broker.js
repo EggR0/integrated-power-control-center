@@ -33,6 +33,11 @@ const copiedManifestPath = path.join(destination, "broker-manifest.json");
 const copiedManifest = JSON.parse(fs.readFileSync(copiedManifestPath, "utf8"));
 copiedManifest.assetRoot = "resources";
 fs.writeFileSync(copiedManifestPath, `${JSON.stringify(copiedManifest, null, 2)}\n`);
+
+const rootBrokerOut = path.resolve(__dirname, "..", "broker-out", "broker");
+fs.rmSync(rootBrokerOut, { recursive: true, force: true });
+fs.mkdirSync(path.dirname(rootBrokerOut), { recursive: true });
+fs.cpSync(destination, rootBrokerOut, { recursive: true });
 fs.copyFileSync(path.resolve(__dirname, "..", "broker-server.js"), path.join(resourceRoot, "broker-server.js"));
 fs.copyFileSync(path.resolve(__dirname, "..", "mcp-server.js"), path.join(resourceRoot, "mcp-server.js"));
 fs.mkdirSync(path.join(resourceRoot, "scripts"), { recursive: true });

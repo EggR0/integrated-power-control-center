@@ -5,7 +5,9 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const http = require("http");
-const bundledModule = path.join(__dirname, "broker-out", "broker");
+const bundledModule = fs.existsSync(path.join(__dirname, "broker-out", "broker", "broker-manifest.json"))
+  ? path.join(__dirname, "broker-out", "broker")
+  : path.join(__dirname, "src-tauri", "resources", "broker-out", "broker");
 const { resolveBrokerPackage } = require("./scripts/broker-package.js");
 const brokerPackage = resolveBrokerPackage({
   modulePath: process.env.INTEGRATED_POWER_BROKER_MODULE,

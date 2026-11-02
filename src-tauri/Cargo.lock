@@ -1500,7 +1500,7 @@ dependencies = [
 
 [[package]]
 name = "integrated-power-control-center"
-version = "0.9.22"
+version = "0.11.6"
 dependencies = [
  "tauri",
  "tauri-build",

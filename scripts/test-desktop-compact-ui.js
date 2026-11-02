@@ -24,7 +24,9 @@ const capabilities = ["tasks.read", "tasks.write", "approvals.read", "tokens.rea
 const tokenStatus = {
   antigravityPercentage: 100, antigravityTokensLeft: 1000, antigravityMax: 1000, antigravityResetTime: "2020-01-01T00:00:00Z",
   antigravityWeeklyPercentage: 100, antigravityWeeklyTokensLeft: 10000, antigravityWeeklyMax: 10000, antigravityWeeklyResetTime: "2020-01-01T00:00:00Z",
+  argonWeeklyPercentage: 100, argonWeeklyResetTime: "2020-01-01T00:00:00Z",
   opusPercentage: 100, opusTokensLeft: 1000, opusMax: 1000, opusResetTime: "2020-01-01T00:00:00Z",
+  opusWeeklyPercentage: 100,
   codexPercentage: 100, codexTokensLeft: 1000, codexMax: 1000, codexResetTime: "2020-01-01T00:00:00Z",
   codexWeeklyPercentage: 100, codexWeeklyTokensLeft: 10000, codexWeeklyMax: 10000, codexWeeklyResetTime: "2020-01-01T00:00:00Z",
   claudePercentage: 45, claudeTokensLeft: 450, claudeMax: 1000, claudeWeeklyPercentage: 62, claudeWeeklyTokensLeft: 6200, claudeWeeklyMax: 10000,
@@ -35,6 +37,7 @@ const settings = {
   settings: { pollIntervalMs: 60000, notifyOnFull: true, prewarmModes: { antigravity: "click", opus: "click", codex: "click" }, notifications: Object.fromEntries(["antigravityGemini5h", "antigravityGeminiWeekly", "antigravityClaude5h", "antigravityClaudeWeekly", "chatgpt5h", "chatgptWeekly", "claude5h", "claudeWeekly"].map((key) => [key, true])) },
 };
 const prewarmRequests = [];
+let tokenFixtureMode = "normal";
 
 const broker = http.createServer(async (request, response) => {
   response.setHeader("Access-Control-Allow-Origin", "*");
@@ -43,6 +46,9 @@ const broker = http.createServer(async (request, response) => {
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   if (request.method === "OPTIONS") { response.writeHead(204).end(); return; }
   const url = new URL(request.url, "http://127.0.0.1");
+  if (url.pathname === "/__fixture/tokens/fail") { tokenFixtureMode = "failed"; response.writeHead(200).end("{}"); return; }
+  if (url.pathname === "/__fixture/tokens/recover") { tokenFixtureMode = "zero"; response.writeHead(200).end("{}"); return; }
+  if (url.pathname === "/v1/tokens/status" && tokenFixtureMode === "failed") { response.writeHead(500).end(JSON.stringify({ ok: false, errors: ["fixture quota source failed"] })); return; }
   let body;
   if (request.method === "POST") {
     const chunks = [];
@@ -54,7 +60,7 @@ const broker = http.createServer(async (request, response) => {
   else if (url.pathname === "/v1/capabilities") result = { capabilities };
   else if (url.pathname === "/v1/tasks") result = { ok: true, tasks: [], activeCount: 0, errors: [], source: "fixture" };
   else if (url.pathname === "/v1/approvals") result = { ok: true, approvals: [], errors: [], source: "fixture" };
-  else if (url.pathname === "/v1/tokens/status") result = { ok: true, forced: url.searchParams.has("force"), tokenStatus };
+  else if (url.pathname === "/v1/tokens/status") result = { ok: true, forced: url.searchParams.has("force"), tokenStatus: tokenFixtureMode === "zero" ? { ...tokenStatus, codexPercentage: 0, codexTokensLeft: 0, lastSync: new Date().toISOString() } : tokenStatus };
   else if (url.pathname === "/v1/runs") result = { ok: true, runs: [], activeCount: 0, errors: [], source: "fixture" };
   else if (url.pathname === "/v1/metrics/local-llm") result = { ok: true, metrics: [], errors: [], source: "fixture" };
   else if (url.pathname === "/v1/workspaces") result = { ok: true, workspaces: [], errors: [], source: "fixture" };
@@ -116,10 +122,14 @@ frame.style.width="900px"; doc.getElementById("nav-tokens")?.click(); await wait
 const wideLabels=[...doc.querySelectorAll(".provider-toggle,.provider-state-tag,.status-pill,.prewarm-action")].filter(e=>e.getClientRects().length).map(e=>{const range=doc.createRange();range.selectNodeContents(e);const lines=[...new Set([...range.getClientRects()].map(rect=>Math.round(rect.top)))];return {label:(e.innerText||"").trim(),overflow:e.tagName==="BUTTON"&&e.scrollWidth>e.clientWidth+1,lines};}).filter(item=>item.overflow||item.lines.length>1);
 const title=doc.querySelector(".banner-left h2"); const titleWordBreak=title?getComputedStyle(title).wordBreak:"";
 doc.getElementById("toast")?.style.setProperty("display","none");
-document.title=JSON.stringify({results,legacyToast,actionStates,codexCountdown,wideLabels,titleWordBreak});})();</script></body></html>`;
+await fetch('http://127.0.0.1:${brokerPort}/__fixture/tokens/fail'); doc.getElementById("token-refresh-btn")?.click(); await waits(450);
+const failedQuota={label:doc.getElementById("label-codex-5h")?.textContent||"",actions:[...doc.querySelectorAll("[data-prewarm-window]")].map(b=>({disabled:b.disabled,title:b.title})),gaugeTicks:doc.getElementById("bar-codex-5h")?.parentElement?.querySelector(".progress-ticks")?.dataset.segments};
+await fetch('http://127.0.0.1:${brokerPort}/__fixture/tokens/recover'); doc.getElementById("token-refresh-btn")?.click(); await waits(450);
+const recoveredQuota={label:doc.getElementById("label-codex-5h")?.textContent||"",disabled:doc.getElementById("prewarm-codex-5h")?.disabled};
+document.title=JSON.stringify({results,legacyToast,actionStates,codexCountdown,wideLabels,titleWordBreak,failedQuota,recoveredQuota});})();</script></body></html>`;
     const launcher = [
       "--headless=new", "--no-sandbox", "--disable-gpu", "--allow-file-access-from-files", "--no-first-run",
-      "--disable-default-apps", "--disable-background-networking", "--password-store=basic", "--window-size=900,1000", "--virtual-time-budget=5000", "--run-all-compositor-stages-before-draw", "--dump-dom", `--user-data-dir=${temp}`,
+      "--disable-default-apps", "--disable-background-networking", "--password-store=basic", "--window-size=900,1000", "--virtual-time-budget=8000", "--run-all-compositor-stages-before-draw", "--dump-dom", `--user-data-dir=${temp}`,
       `http://127.0.0.1:${webPort}/__compact`,
     ];
     if (process.env.IP_PARITY_SCREENSHOT_PATH) {
@@ -129,7 +139,7 @@ document.title=JSON.stringify({results,legacyToast,actionStates,codexCountdown,w
     const dom = await captureDom(launcher);
     const raw = dom.match(/<title>(.*?)<\/title>/s)?.[1];
     assert(raw, "Chromium returned no desktop layout report.");
-    const { results: report, legacyToast, actionStates, codexCountdown, wideLabels, titleWordBreak } = JSON.parse(raw.replaceAll("&quot;", '"').replaceAll("&amp;", "&"));
+    const { results: report, legacyToast, actionStates, codexCountdown, wideLabels, titleWordBreak, failedQuota, recoveredQuota } = JSON.parse(raw.replaceAll("&quot;", '"').replaceAll("&amp;", "&"));
     assert.equal(report.length, 18, "all six tabs must be measured at all three widths");
     for (const item of report) {
       assert(item.scrollWidth <= item.clientWidth, `horizontal page overflow: ${JSON.stringify(item)}`);
@@ -148,16 +158,20 @@ document.title=JSON.stringify({results,legacyToast,actionStates,codexCountdown,w
         assert(Math.abs(gauge.trackClientWidth - gauge.tickWidth) < 1, `desktop gauge ${index} ticks must cover the full track: ${JSON.stringify(gauge)}`);
         assert(gauge.background.includes("linear-gradient") && (gauge.background.match(/rgba\(255, 255, 255, 0\.55\)/g) || []).length === (segments - 1) * 2, `desktop gauge ${index} computed gradient must retain the shared ${segments}-segment positions`);
       }
-      assert(item.gauges.some((gauge) => gauge.unavailable), "desktop unavailable quota must retain its gauge track and ticks");
     }
-    assert.equal(actionStates.length, 3, `desktop must render a separate trigger button for each canonical model: ${JSON.stringify(actionStates)}`);
-    assert.deepEqual(actionStates.map((button) => button.model).sort(), ["antigravity", "codex", "opus"]);
+    assert.equal(actionStates.length, 4, `desktop must render a separate trigger button for each canonical model: ${JSON.stringify(actionStates)}`);
+    assert.deepEqual(actionStates.map((button) => button.model).sort(), ["antigravity", "argon", "codex", "opus"]);
     assert(actionStates.every((button) => !button.disabled && button.title.includes("확인되지 않습니다")), `Ready model action buttons must be enabled with truthful titles: ${JSON.stringify(actionStates)}`);
-    assert.deepEqual(prewarmRequests.map((request) => request.model).sort(), ["antigravity", "codex", "opus"], "mode selection must not trigger prewarm; each separate action button must call its model through the fake broker");
-    assert(codexCountdown.includes("Ready"), `ChatGPT 5h countdown/status element must be restored: ${codexCountdown}`);
+    assert.deepEqual(prewarmRequests.map((request) => request.model).sort(), ["antigravity", "argon", "codex", "opus"], "mode selection must not trigger prewarm; each separate action button must call its model through the fake broker");
+    assert(codexCountdown.includes("Ready") || codexCountdown.includes("Refreshes in"), `ChatGPT 5h countdown/status element must be restored: ${codexCountdown}`);
     assert.equal(wideLabels.length, 0, `provider controls and status labels must remain single-line at the normal 900px desktop viewport: ${JSON.stringify(wideLabels)}`);
     assert.equal(titleWordBreak, "keep-all", "Korean token heading must wrap between words, not split Korean words");
     assert(legacyToast.includes("구형 브로커가 요청을 접수했습니다") && legacyToast.includes("확인되지 않습니다"), `legacy prewarm response must be acknowledged without claiming execution: ${legacyToast}`);
+    assert(!failedQuota.label.includes("100%") && !failedQuota.label.includes("100.00%"), `quota HTTP 500 must not retain a fresh-looking prior percentage: ${JSON.stringify(failedQuota)}`);
+    assert(failedQuota.actions.every((button) => button.disabled), `quota HTTP 500 must disable prewarm actions: ${JSON.stringify(failedQuota)}`);
+    assert.equal(failedQuota.gaugeTicks, "5", "unavailable quota must retain its gauge track and ticks");
+    assert.match(recoveredQuota.label, /\b0(?:\.0+)?%/, `a fresh exhausted value must recover as actual 0%: ${JSON.stringify(recoveredQuota)}`);
+    assert.equal(recoveredQuota.disabled, true, "fresh exhausted quota must not allow prewarm");
     console.log(JSON.stringify({ checks: report.length, widths: [199, 160, 120], tabs, violations: 0 }));
   } finally {
     await Promise.all([new Promise((resolve) => broker.close(resolve)), new Promise((resolve) => web.close(resolve))]);
