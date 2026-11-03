@@ -159,6 +159,9 @@ if (Test-Path $extractScript) {
                     try {
                         $j = $specCred.Value | ConvertFrom-Json
                         if ($j.token) {
+                            if ($authObj.refresh_token -and -not $j.token.refresh_token) {
+                                $j.token.refresh_token = $authObj.refresh_token
+                            }
                             $results.accounts[$ideEmail] = @{
                                 email = $ideEmail
                                 source = "credential-manager"
@@ -175,7 +178,7 @@ if (Test-Path $extractScript) {
                         access_token = $authObj.access_token
                         refresh_token = $authObj.refresh_token
                         token_type = "Bearer"
-                        expiry = (Get-Date).AddHours(1).ToString("o")
+                        expiry = (Get-Date).ToUniversalTime().AddHours(1).ToString("yyyy-MM-ddTHH:mm:ssZ")
                     }
                     $results.accounts[$ideEmail] = @{
                         email = $ideEmail
