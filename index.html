@@ -34,10 +34,12 @@
             <span id="connection-dot" class="connection-dot offline"></span>
             <span id="connection-label">브로커 확인 중…</span>
           </div>
+          <!-- Inactive active-agent-capsule (removed per user request)
           <div id="active-agent-capsule" class="liquid-capsule active-agent-pill">
             <span class="active-agent-icon">◈</span>
             <span id="top-agent-label">에이전트 준비 중</span>
           </div>
+          -->
         </div>
 
         <form id="omni-command-form" class="liquid-capsule omni-command-form">
@@ -47,11 +49,13 @@
         </form>
 
         <div class="topbar-capsule-right">
+          <!-- Inactive IDE Workspace Selector (commented out per user request)
           <label class="workspace-context">IDE 워크스페이스
             <select id="workspace-context-select" aria-label="IDE 워크스페이스"></select>
             <input id="workspace-context-path" aria-label="워크스페이스 경로 직접 입력" placeholder="또는 경로 입력" />
             <button id="workspace-context-apply" class="button secondary compact-btn" type="button">적용</button>
           </label>
+          -->
           <!-- Theme Switcher -->
           <div class="liquid-capsule theme-switcher-capsule" title="테마 변경">
             <button id="theme-btn-titanium" class="theme-btn active apple-tactile" type="button" title="스모크 티타늄 (다크 리퀴드 글래스)">
@@ -89,7 +93,6 @@
                 <h2>AI 모델 실시간 쿼터 & 토큰 상태</h2>
                 <p id="token-last-updated" class="muted">동기화 대기 중…</p>
                 <div id="token-capacity-summary" class="token-capacity-summary" style="display: none;"></div>
-                <div id="token-prewarm-toolbar" class="token-prewarm-toolbar"></div>
               </div>
             </div>
             <div class="banner-right">
@@ -104,13 +107,13 @@
                   <span class="slider round"></span>
                 </label>
               </div>
-              <button id="token-refresh-btn" class="button primary apple-tactile">↻ 쿼터 즉시 새로고침</button>
-              <button id="provider-visibility-reset" class="button apple-tactile" title="숨긴 제공자 블록을 모두 다시 표시">모두 표시</button>
+              <button id="token-refresh-btn" style="display:none;" aria-hidden="true"></button>
+              <button id="provider-visibility-reset" class="button apple-tactile" title="접힌 제공자 블록을 모두 다시 펼치기">모두 펼치기</button>
             </div>
           </div>
 
           <!-- Account & Provider Selector (Multi-Account + GCP agya) -->
-          <div class="account-selector-bar card liquid-card" id="account-selector-bar">
+          <div class="account-selector-bar card liquid-card" id="account-selector-bar" style="display: none;">
             <span class="account-selector-label">공급원:</span>
             <div id="account-pill-container" class="account-pill-container"></div>
           </div>
@@ -118,27 +121,28 @@
           <!-- Provider-Grouped Capacity & Token Grid -->
           <div class="token-providers-grid">
             <!-- Group 1: Antigravity IDE -->
-            <div class="card provider-card liquid-card" id="provider-antigravity">
+            <div class="card provider-card liquid-card" id="provider-antigravity" data-provider="antigravity">
               <div class="provider-header">
-                <span class="provider-pill">Antigravity IDE</span>
-                <span class="provider-state-tag">Idle</span>
-                <button class="provider-toggle apple-tactile" data-provider="antigravity" title="이 블록 표시/숨김">숨기기</button>
+                <span class="provider-pill" id="antigravity-provider-pill">Antigravity IDE</span>
+                <span class="account-email-tag" id="antigravity-account-email" style="display: none;"></span>
+                <span class="provider-state-tag" id="antigravity-provider-state-tag">Idle</span>
+                <button class="prewarm-settings-btn apple-tactile" data-prewarm-target="antigravity" title="프리웜 설정">⚙ 프리웜</button>
+                <button class="provider-toggle apple-tactile" data-provider="antigravity" title="블록 접기/펼치기">접기</button>
               </div>
               <div class="provider-models">
+                <div id="antigravity-account-error" class="account-error-banner" style="display: none;"></div>
                 <!-- Gemini -->
                 <div class="model-block">
                   <div class="model-name-row">
                     <h4>Gemini</h4>
+                    <button id="prewarm-gemini-5h" class="prewarm-action apple-tactile" type="button" data-prewarm-window="antigravity" data-window-id="gemini-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
                   </div>
                   <div class="quota-window-row">
                     <div class="window-info">
                       <span class="window-name">5Hours</span>
                       <span id="label-gemini-5h" class="window-val">--% remaining</span>
                     </div>
-                    <div class="quota-window-footer">
-                      <p id="reset-gemini-5h" class="window-countdown">· Waiting for quota</p>
-                      <button id="prewarm-gemini-5h" class="prewarm-action apple-tactile" type="button" data-prewarm-window="antigravity" data-window-id="gemini-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
-                    </div>
+                    <p id="reset-gemini-5h" class="window-countdown">· Waiting for quota</p>
                     <div class="progress-track"><div id="bar-gemini-5h" class="progress-fill gemini" style="width: 0%;"></div></div>
                     <p id="tokens-gemini-5h" class="window-tokens"></p>
                   </div>
@@ -157,15 +161,14 @@
                 <div class="model-block" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--glass-border-subtle);">
                   <div class="model-name-row">
                     <h4>Gemini 4 Argon</h4>
+                    <button id="prewarm-argon-weekly" class="prewarm-action apple-tactile" type="button" data-prewarm-window="argon" data-window-id="argon-weekly"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
                   </div>
                   <div id="row-argon-5h" class="quota-window-row" style="display: none;">
                     <div class="window-info">
                       <span class="window-name">5Hours</span>
                       <span id="label-argon-5h" class="window-val">--% remaining</span>
                     </div>
-                    <div class="quota-window-footer">
-                      <p id="reset-argon-5h" class="window-countdown">· Waiting for quota</p>
-                    </div>
+                    <p id="reset-argon-5h" class="window-countdown">· Waiting for quota</p>
                     <div class="progress-track"><div id="bar-argon-5h" class="progress-fill gemini" style="width: 0%;"></div></div>
                     <p id="tokens-argon-5h" class="window-tokens"></p>
                   </div>
@@ -174,10 +177,7 @@
                       <span class="window-name">Weekly</span>
                       <span id="label-argon-weekly" class="window-val">--% remaining</span>
                     </div>
-                    <div class="quota-window-footer">
-                      <p id="reset-argon-weekly" class="window-countdown">· Waiting for quota</p>
-                      <button id="prewarm-argon-weekly" class="prewarm-action apple-tactile" type="button" data-prewarm-window="argon" data-window-id="argon-weekly"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
-                    </div>
+                    <p id="reset-argon-weekly" class="window-countdown">· Waiting for quota</p>
                     <div class="progress-track"><div id="bar-argon-weekly" class="progress-fill gemini" style="width: 0%;"></div></div>
                     <p id="tokens-argon-weekly" class="window-tokens"></p>
                   </div>
@@ -187,16 +187,14 @@
                 <div class="model-block" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--glass-border-subtle);">
                   <div class="model-name-row">
                     <h4>Claude</h4>
+                    <button id="prewarm-opus-5h" class="prewarm-action apple-tactile" type="button" data-prewarm-window="opus" data-window-id="opus-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
                   </div>
                   <div class="quota-window-row">
                     <div class="window-info">
                       <span class="window-name">5Hours</span>
                       <span id="label-opus-5h" class="window-val">--% remaining</span>
                     </div>
-                    <div class="quota-window-footer">
-                      <p id="reset-opus-5h" class="window-countdown">· Waiting for quota</p>
-                      <button id="prewarm-opus-5h" class="prewarm-action apple-tactile" type="button" data-prewarm-window="opus" data-window-id="opus-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
-                    </div>
+                    <p id="reset-opus-5h" class="window-countdown">· Waiting for quota</p>
                     <div class="progress-track"><div id="bar-opus-5h" class="progress-fill opus" style="width: 0%;"></div></div>
                     <p id="tokens-opus-5h" class="window-tokens"></p>
                   </div>
@@ -213,32 +211,118 @@
               </div>
             </div>
 
-            <!-- Group 2: OpenAI (ChatGPT + Codex) -->
-            <div class="card provider-card liquid-card" id="provider-openai">
+            <!-- Group 1B: Antigravity 2.0 -->
+            <div class="card provider-card liquid-card" id="provider-antigravity-2" data-provider="antigravity-2">
+              <div class="provider-header">
+                <span class="provider-pill" id="antigravity-2-provider-pill">Antigravity 2.0</span>
+                <span class="account-email-tag" id="antigravity-2-account-email" style="display: none;"></span>
+                <span class="provider-state-tag" id="antigravity-2-provider-state-tag">Idle</span>
+                <button class="prewarm-settings-btn apple-tactile" data-prewarm-target="antigravity-2" title="프리웜 설정">⚙ 프리웜</button>
+                <button class="provider-toggle apple-tactile" data-provider="antigravity-2" title="블록 접기/펼치기">접기</button>
+              </div>
+              <div class="provider-models">
+                <div id="antigravity-2-account-error" class="account-error-banner" style="display: none;"></div>
+                <!-- Gemini -->
+                <div class="model-block">
+                  <div class="model-name-row">
+                    <h4>Gemini</h4>
+                    <button id="prewarm-agy2-gemini-5h" class="prewarm-action apple-tactile" type="button" data-account-prewarm="antigravity" data-window-id="gemini-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
+                  </div>
+                  <div class="quota-window-row">
+                    <div class="window-info">
+                      <span class="window-name">5Hours</span>
+                      <span id="label-agy2-gemini-5h" class="window-val">--% remaining</span>
+                    </div>
+                    <p id="reset-agy2-gemini-5h" class="window-countdown">· Waiting for quota</p>
+                    <div class="progress-track"><div id="bar-agy2-gemini-5h" class="progress-fill gemini" style="width: 0%;"></div></div>
+                    <p id="tokens-agy2-gemini-5h" class="window-tokens"></p>
+                  </div>
+                  <div class="quota-window-row">
+                    <div class="window-info">
+                      <span class="window-name">Weekly</span>
+                      <span id="label-agy2-gemini-weekly" class="window-val">--% remaining</span>
+                    </div>
+                    <p id="reset-agy2-gemini-weekly" class="window-countdown">· Waiting for quota</p>
+                    <div class="progress-track"><div id="bar-agy2-gemini-weekly" class="progress-fill gemini" style="width: 0%;"></div></div>
+                    <p id="tokens-agy2-gemini-weekly" class="window-tokens"></p>
+                  </div>
+                </div>
+
+                <!-- Argon 4 -->
+                <div class="model-block" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--glass-border-subtle);">
+                  <div class="model-name-row">
+                    <h4>Gemini 4 Argon</h4>
+                    <button id="prewarm-agy2-argon-weekly" class="prewarm-action apple-tactile" type="button" data-account-prewarm="argon" data-window-id="argon-weekly"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
+                  </div>
+                  <div id="row-agy2-argon-5h" class="quota-window-row" style="display: none;">
+                    <div class="window-info">
+                      <span class="window-name">5Hours</span>
+                      <span id="label-agy2-argon-5h" class="window-val">--% remaining</span>
+                    </div>
+                    <p id="reset-agy2-argon-5h" class="window-countdown">· Waiting for quota</p>
+                    <div class="progress-track"><div id="bar-agy2-argon-5h" class="progress-fill gemini" style="width: 0%;"></div></div>
+                    <p id="tokens-agy2-argon-5h" class="window-tokens"></p>
+                  </div>
+                  <div class="quota-window-row">
+                    <div class="window-info">
+                      <span class="window-name">Weekly</span>
+                      <span id="label-agy2-argon-weekly" class="window-val">--% remaining</span>
+                    </div>
+                    <p id="reset-agy2-argon-weekly" class="window-countdown">· Waiting for quota</p>
+                    <div class="progress-track"><div id="bar-agy2-argon-weekly" class="progress-fill gemini" style="width: 0%;"></div></div>
+                    <p id="tokens-agy2-argon-weekly" class="window-tokens"></p>
+                  </div>
+                </div>
+
+                <!-- Claude -->
+                <div class="model-block" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--glass-border-subtle);">
+                  <div class="model-name-row">
+                    <h4>Claude</h4>
+                    <button id="prewarm-agy2-opus-5h" class="prewarm-action apple-tactile" type="button" data-account-prewarm="opus" data-window-id="opus-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
+                  </div>
+                  <div class="quota-window-row">
+                    <div class="window-info">
+                      <span class="window-name">5Hours</span>
+                      <span id="label-agy2-opus-5h" class="window-val">--% remaining</span>
+                    </div>
+                    <p id="reset-agy2-opus-5h" class="window-countdown">· Waiting for quota</p>
+                    <div class="progress-track"><div id="bar-agy2-opus-5h" class="progress-fill opus" style="width: 0%;"></div></div>
+                    <p id="tokens-agy2-opus-5h" class="window-tokens"></p>
+                  </div>
+                  <div class="quota-window-row">
+                    <div class="window-info">
+                      <span class="window-name">Weekly</span>
+                      <span id="label-agy2-opus-weekly" class="window-val">--% remaining</span>
+                    </div>
+                    <p id="reset-agy2-opus-weekly" class="window-countdown">· Waiting for quota</p>
+                    <div class="progress-track"><div id="bar-agy2-opus-weekly" class="progress-fill opus" style="width: 0%;"></div></div>
+                    <p id="tokens-agy2-opus-weekly" class="window-tokens"></p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Group 2: OpenAI (ChatGPT) -->
+            <div class="card provider-card liquid-card" id="provider-openai" data-provider="openai">
               <div class="provider-header">
                 <span class="provider-pill">OpenAI</span>
                 <span id="openai-status-tag" class="provider-state-tag">구독: Plus</span>
-                <button class="provider-toggle apple-tactile" data-provider="openai" title="이 블록 표시/숨김">숨기기</button>
+                <button class="prewarm-settings-btn apple-tactile" data-prewarm-target="openai" title="프리웜 설정">⚙ 프리웜</button>
+                <button class="provider-toggle apple-tactile" data-provider="openai" title="블록 접기/펼치기">접기</button>
               </div>
               <div class="provider-models">
-                <div class="subscription-pool-banner">
-                  <span class="pool-icon">ℹ️</span>
-                  <span>구독 포함 사용량 (ChatGPT · Codex 공유 풀)</span>
-                </div>
-                <!-- ChatGPT (대화 예산) -->
+                <!-- ChatGPT -->
                 <div class="model-block">
                   <div class="model-name-row">
-                    <h4>ChatGPT (대화 예산)</h4>
+                    <h4>ChatGPT</h4>
+                    <button id="prewarm-codex-5h" class="prewarm-action apple-tactile" type="button" data-prewarm-window="codex" data-window-id="codex-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
                   </div>
                   <div class="quota-window-row">
                     <div class="window-info">
                       <span class="window-name">5Hours</span>
                       <span id="label-codex-5h" class="window-val">Waiting for quota data</span>
                     </div>
-                    <div class="quota-window-footer">
-                      <p id="reset-codex-5h" class="window-countdown">· Waiting for quota</p>
-                      <button id="prewarm-codex-5h" class="prewarm-action apple-tactile" type="button" data-prewarm-window="codex" data-window-id="codex-5h"><span class="prewarm-action-full">⚡ Pre-warm</span><span class="prewarm-action-medium">⚡ Prewarm</span><span class="prewarm-action-short">⚡ Pre</span></button>
-                    </div>
+                    <p id="reset-codex-5h" class="window-countdown">· Waiting for quota</p>
                     <div class="progress-track"><div id="bar-codex-5h" class="progress-fill codex" style="width: 0%;"></div></div>
                     <p id="tokens-codex-5h" class="window-tokens"></p>
                   </div>
@@ -252,24 +336,15 @@
                     <p id="tokens-codex-weekly" class="window-tokens"></p>
                   </div>
                 </div>
-
-                <!-- Codex (에이전트 예산) -->
-                <div class="model-block" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--glass-border-subtle);">
-                  <div class="model-name-row flex-between">
-                    <h4>Codex (에이전트 자동화)</h4>
-                    <span id="codex-status-tag" class="provider-state-tag" style="font-size:10px; padding:2px 6px;">Idle</span>
-                  </div>
-                  <p class="muted" style="font-size: 11px; margin-top: 4px;">Codex CLI / App Server 작업 라우팅 상태를 반영합니다.</p>
-                </div>
               </div>
             </div>
 
             <!-- Group 3: Anthropic Claude -->
-            <div class="card provider-card liquid-card" id="provider-claude">
+            <div class="card provider-card liquid-card" id="provider-claude" data-provider="claude">
               <div class="provider-header">
                 <span class="provider-pill">Anthropic Claude</span>
                 <span id="claude-status-tag" class="provider-state-tag">No data</span>
-                <button class="provider-toggle apple-tactile" data-provider="claude" title="이 블록 표시/숨김">숨기기</button>
+                <button class="provider-toggle apple-tactile" data-provider="claude" title="블록 접기/펼치기">접기</button>
               </div>
               <div class="provider-models">
                 <div class="model-block">
@@ -302,11 +377,11 @@
             </div>
 
             <!-- Group 4: Local LLM -->
-            <div class="card provider-card liquid-card" id="provider-local">
+            <div class="card provider-card liquid-card" id="provider-local" data-provider="local">
               <div class="provider-header">
                 <span class="provider-pill">Local LLM</span>
                 <span id="local-llm-status-tag" class="provider-state-tag">Offline</span>
-                <button class="provider-toggle apple-tactile" data-provider="local" title="이 블록 표시/숨김">숨기기</button>
+                <button class="provider-toggle apple-tactile" data-provider="local" title="블록 접기/펼치기">접기</button>
               </div>
               <div class="provider-models">
                 <div id="gpu-status-container" class="gpu-status-list">
@@ -388,7 +463,7 @@
                 <span class="launcher-desc">Todo.md 연동</span>
               </button>
               <!-- Launcher 3: 연동 허브 (2x2 Mini-Glyph Folder Tile) -->
-              <button id="launcher-hub-folder" class="liquid-squircle apple-tactile launcher-card hub-folder-launcher" type="button" title="연동 허브 열기">
+              <button id="launcher-hub-folder" class="liquid-squircle apple-tactile launcher-card hub-folder-launcher" type="button" data-launcher="hub" title="연동 허브 열기">
                 <div class="launcher-2x2-box">
                   <span class="mini-glyph glyph-openclaw">O</span>
                   <span class="mini-glyph glyph-hermes">H</span>
@@ -482,7 +557,6 @@
             </div>
             <div class="card-footer-row">
               <span class="rule-hint">규칙 202: 15% 미만 시 아키텍처 결정만 위임</span>
-              <button id="btn-quick-tokens-jump" class="apple-tactile button secondary compact-btn" type="button">쿼터 상세 보기 →</button>
             </div>
           </div>
 
@@ -837,7 +911,7 @@
                   </label>
                 </div>
                 <div style="display:flex; gap:16px; align-items:center; margin-top:10px; flex-wrap:wrap;">
-                  <label style="font-size:12px; color:var(--text-main); display:flex; gap:6px; align-items:center;">
+                  <label class="switch-toggle-label" style="font-size:12px; color:var(--text-main); display:flex; gap:6px; align-items:center;">
                     <input type="checkbox" id="ext-discover" checked /> 모델 자동 조회
                   </label>
                   <label style="font-size:12px; color:var(--text-main); display:flex; gap:6px; align-items:center;">
@@ -1033,11 +1107,36 @@
         </div>
       </div>
 
+      <!-- ============================================== -->
+      <!-- MODAL 3: PREWARM SETTINGS MODAL                -->
+      <!-- ============================================== -->
+      <div id="prewarm-settings-modal" class="liquid-modal hidden liquid-sheet-overlay" role="dialog" aria-modal="true" aria-labelledby="prewarm-modal-title">
+        <div class="liquid-card-elevated prewarm-modal-content">
+          <div class="modal-header">
+            <div class="modal-title-group">
+              <span class="pulse-icon">⚡</span>
+              <div>
+                <h2 id="prewarm-modal-title" class="modal-title">자동 프리웜 설정</h2>
+                <p id="prewarm-modal-subtitle" class="modal-subtitle">5시간 윈도우 100% 충전 시 자동 프리웜 트리거 정책</p>
+              </div>
+            </div>
+            <button id="btn-close-prewarm-modal" class="modal-close-btn apple-tactile" type="button" aria-label="닫기">✕</button>
+          </div>
+          <div id="prewarm-modal-body" class="prewarm-modal-body">
+            <!-- Dynamically populated or rendered models for the session -->
+          </div>
+          <div class="modal-footer">
+            <span class="hub-manifesto-hint">100% 완충 상태를 유지하여 대기 시간을 최소화합니다.</span>
+            <button id="btn-dismiss-prewarm-modal" class="button secondary compact-btn apple-tactile" type="button">닫기</button>
+          </div>
+        </div>
+      </div>
+
       <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
       <footer class="statusbar">
         <span id="status" class="muted">브로커 상태를 확인하는 중…</span>
-        <span>Integrated Power v0.12.0 · Smoked Titanium Liquid Glass</span>
+        <span id="footer-version-theme">Integrated Power v0.12.0 · Smoked Titanium Liquid Glass</span>
       </footer>
     </div>
     <script type="module" src="/src/main.js"></script>

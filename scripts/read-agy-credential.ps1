@@ -61,26 +61,32 @@ try {
         $value = [Text.Encoding]::Unicode.GetString($bytes)
     }
 
-    # If reading the default target, automatically preserve an account-specific copy
+    # If reading the default target, automatically preserve an account-specific copy if not already present
     if ($Target -eq 'gemini:antigravity') {
         try {
             $parsed = $value | ConvertFrom-Json
             if ($parsed.id_token_email) {
                 $specificTarget = "gemini:antigravity:$($parsed.id_token_email)"
-                $blobBytes = [System.Text.Encoding]::UTF8.GetBytes($value)
-                $blobPtr = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($blobBytes.Length)
-                try {
-                    [System.Runtime.InteropServices.Marshal]::Copy($blobBytes, 0, $blobPtr, $blobBytes.Length)
-                    $c = New-Object AgyCredentialReader.NativeMethods+Credential
-                    $c.Type = 1
-                    $c.TargetName = $specificTarget
-                    $c.UserName = "antigravity"
-                    $c.CredentialBlob = $blobPtr
-                    $c.CredentialBlobSize = [uint32]$blobBytes.Length
-                    $c.Persist = 2
-                    $null = [AgyCredentialReader.NativeMethods]::CredWrite([ref]$c, 0)
-                } finally {
-                    [System.Runtime.InteropServices.Marshal]::FreeHGlobal($blobPtr)
+                $existingPtr = [IntPtr]::Zero
+                $exists = [AgyCredentialReader.NativeMethods]::CredRead($specificTarget, 1, 0, [ref]$existingPtr)
+                if ($exists) {
+                    [AgyCredentialReader.NativeMethods]::CredFree($existingPtr)
+                } else {
+                    $blobBytes = [System.Text.Encoding]::UTF8.GetBytes($value)
+                    $blobPtr = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($blobBytes.Length)
+                    try {
+                        [System.Runtime.InteropServices.Marshal]::Copy($blobBytes, 0, $blobPtr, $blobBytes.Length)
+                        $c = New-Object AgyCredentialReader.NativeMethods+Credential
+                        $c.Type = 1
+                        $c.TargetName = $specificTarget
+                        $c.UserName = "antigravity"
+                        $c.CredentialBlob = $blobPtr
+                        $c.CredentialBlobSize = [uint32]$blobBytes.Length
+                        $c.Persist = 2
+                        $null = [AgyCredentialReader.NativeMethods]::CredWrite([ref]$c, 0)
+                    } finally {
+                        [System.Runtime.InteropServices.Marshal]::FreeHGlobal($blobPtr)
+                    }
                 }
             }
         } catch {}

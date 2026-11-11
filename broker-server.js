@@ -35,7 +35,7 @@ const port = Number.parseInt(process.env.INTEGRATED_POWER_BROKER_PORT || "37241"
   await broker.initialize();
   let server;
   try {
-    server = await startBrokerServer(broker, Number.isFinite(port) && port > 0 ? port : 37241, { stateRoot });
+    server = await startBrokerServer(broker, Number.isFinite(port) && port > 0 ? port : 37241, { stateRoot, staticDir: path.join(__dirname, "dist") });
   } catch (error) {
     if (!isAddressInUse(error) || !(await probeBroker(port))) throw error;
     console.log(JSON.stringify({ service: "integrated-power-broker", port, bind: "127.0.0.1", attached: true }));

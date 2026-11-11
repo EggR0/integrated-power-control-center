@@ -427,7 +427,12 @@ button { border: 0; cursor: pointer; }
   border: var(--glass-border-subtle);
   color: var(--text-main);
 }
-.workspace-context select { width: 110px; }
+.workspace-context select,
+#workspace-context-select {
+  min-width: 125px;
+  width: auto;
+  padding: 2px 26px 2px 8px;
+}
 .workspace-context input { width: 95px; }
 
 /* Theme Switcher Capsule */
@@ -747,6 +752,44 @@ input:checked + .slider:before {
   border: var(--glass-border-subtle);
   white-space: nowrap;
 }
+.account-email-tag {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  line-height: 1.4;
+}
+.account-error-banner {
+  font-size: 11px;
+  color: var(--accent-rose);
+  padding: 6px 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.subscription-pool-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--glass-surface-subtle);
+  border: var(--glass-border-subtle);
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: keep-all;
+  white-space: normal;
+  margin-bottom: 8px;
+}
 .provider-state-tag {
   font-size: 11px;
   font-weight: 600;
@@ -772,6 +815,58 @@ input:checked + .slider:before {
   color: var(--text-muted);
   border: var(--glass-border-subtle);
   white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.prewarm-settings-btn {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--glass-surface-subtle);
+  color: var(--accent-amber);
+  border: var(--glass-border-subtle);
+  white-space: nowrap;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.prewarm-settings-btn:hover {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+/* Folded / Collapsed Provider Card State */
+.provider-card.is-collapsed {
+  padding: 8px 14px;
+  gap: 0;
+  border-style: dashed;
+  opacity: 0.88;
+}
+.provider-card.is-collapsed .provider-header {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.provider-card.is-collapsed .provider-models {
+  display: none !important;
+}
+
+/* Model Header Row: Left-aligned name, right-aligned pre-warm action */
+.model-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.model-name-row h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+  text-align: left;
+}
+.model-name-row .prewarm-action {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* Quota Window Rows & Gauges */
@@ -858,6 +953,27 @@ input:checked + .slider:before {
 .prewarm-action-medium,
 .prewarm-action-short { display: none; }
 
+.token-capacity-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.token-capacity-summary .summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: var(--glass-surface-elevated);
+  border: var(--glass-border-subtle);
+  color: var(--text-main);
+  margin-right: 8px;
+}
+
 /* Pre-warm Toolbar */
 .prewarm-toolbar-inner {
   display: flex;
@@ -878,14 +994,14 @@ input:checked + .slider:before {
 }
 .prewarm-targets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 8px;
 }
 .prewarm-target-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   font-size: 11px;
 }
 .prewarm-mode-options {
@@ -926,8 +1042,56 @@ input:checked + .slider:before {
   justify-content: center;
   text-align: center;
   gap: 5px;
-  cursor: pointer;
+  cursor: grab;
   min-width: 0;
+}
+
+/* =====================================================================
+   DRAG AND DROP REORDER (Apple / Android Springboard Tactile Feel)
+   ===================================================================== */
+.launcher-card,
+.provider-card {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, opacity 0.2s ease, outline-color 0.15s ease;
+}
+
+.provider-card button,
+.provider-card input,
+.provider-card select,
+.provider-card label,
+.provider-card a {
+  user-select: auto;
+  -webkit-user-select: auto;
+}
+
+.provider-card button {
+  cursor: pointer;
+}
+
+.launcher-card:active,
+.provider-card:active {
+  cursor: grabbing;
+}
+
+.launcher-card.is-dragging,
+.provider-card.is-dragging {
+  cursor: grabbing !important;
+  opacity: 0.58;
+  transform: scale(1.04);
+  box-shadow: var(--glass-rim), var(--glass-shadow-lg);
+  z-index: 15;
+  position: relative;
+}
+
+.launcher-card.drag-over,
+.provider-card.drag-over {
+  outline: 2px dashed var(--accent-amber);
+  outline-offset: -2px;
+  background: var(--glass-surface-elevated);
+  transform: scale(0.98);
+  box-shadow: 0 0 12px rgba(217, 119, 6, 0.22);
 }
 .launcher-icon-box {
   width: 38px;
@@ -1330,7 +1494,8 @@ input:checked + .slider:before {
 .liquid-modal.hidden { display: none; }
 
 .integration-modal-content,
-.clarification-sheet-content {
+.clarification-sheet-content,
+.prewarm-modal-content {
   width: 100%;
   max-width: 620px;
   max-height: 85vh;
@@ -1339,6 +1504,13 @@ input:checked + .slider:before {
   gap: 16px;
   padding: 22px;
   overflow: hidden;
+}
+.prewarm-modal-body {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 80px;
 }
 .modal-header {
   display: flex;
@@ -1505,6 +1677,11 @@ input:checked + .slider:before {
 .setting-label { font-size: 12.5px; font-weight: 600; }
 .setting-val { font-size: 11.5px; color: var(--text-muted); }
 .muted { margin: 0; color: var(--text-muted); font-size: 11px; }
+.switch-toggle-label,
+.setting-item label {
+  word-break: keep-all;
+  white-space: nowrap;
+}
 
 .code-box {
   display: block;
@@ -1586,6 +1763,16 @@ input:checked + .slider:before {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+.hub-ecosystem-header {
+  min-width: 100%;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hub-ecosystem-header > div:first-child {
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 /* =====================================================================
@@ -1695,8 +1882,9 @@ input:checked + .slider:before {
     overflow-wrap: anywhere;
     flex-wrap: wrap;
   }
-  .workspace-context select, .workspace-context input {
-    width: 100%;
+  .workspace-context select, .workspace-context input, #workspace-context-select {
+    width: 100% !important;
+    min-width: 0 !important;
     flex: 1 1 100%;
   }
 
@@ -1790,7 +1978,15 @@ input:checked + .slider:before {
     max-width: 100% !important;
     box-sizing: border-box !important;
   }
-  .provider-pill, .provider-state-tag, .provider-toggle {
+  .token-capacity-summary {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .token-capacity-summary .summary-pill {
+    margin-right: 0 !important;
+  }
+  .provider-pill, .provider-state-tag, .provider-toggle, .prewarm-settings-btn, .account-email-tag, .subscription-pool-banner {
     min-width: 0 !important;
     max-width: 100% !important;
     white-space: normal !important;
@@ -1918,10 +2114,11 @@ input:checked + .slider:before {
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  .code-box, code, .log-content, p, label, h2, h3, strong {
+  .code-box, code, .log-content, p, label, h2, h3, strong,
+  .switch-toggle-label, .setting-item label {
     overflow-wrap: anywhere;
     word-break: break-word;
-    white-space: normal;
+    white-space: normal !important;
   }
   table { width: 100%; table-layout: fixed; }
   th, td { padding: 3px 2px !important; overflow-wrap: anywhere; }
@@ -1996,6 +2193,10 @@ input:checked + .slider:before {
     min-width: 0 !important;
     max-width: 100% !important;
     gap: 4px !important;
+  }
+  .hub-ecosystem-header > div:first-child {
+    white-space: normal !important;
+    word-break: keep-all !important;
   }
 
   .hub-connector-card span,
@@ -2083,6 +2284,7 @@ input:checked + .slider:before {
 /* Ensure wide labels remain single-line at normal 900px desktop */
 @media (min-width: 601px) {
   .provider-toggle,
+  .prewarm-settings-btn,
   .provider-state-tag,
   .status-pill,
   .prewarm-action {
@@ -2090,16 +2292,9 @@ input:checked + .slider:before {
   }
 }
 
-/* Multi-Account & GCP agya Selector Styles */
+/* Multi-Account & GCP agya Selector Styles (Deprecated/Hidden for unified modular grid) */
 .account-selector-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
-  border-radius: 12px;
-  overflow-x: auto;
-  box-sizing: border-box;
+  display: none !important;
 }
 .account-selector-label {
   font-size: 11px;

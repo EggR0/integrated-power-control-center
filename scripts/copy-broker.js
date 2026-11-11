@@ -20,14 +20,24 @@ const resourceRoot = path.resolve(__dirname, "..", "src-tauri", "resources");
 const runtimeModules = path.join(resourceRoot, "node_modules");
 if (!fs.existsSync(source)) throw new Error(`Compiled broker not found: ${source}`);
 fs.rmSync(destination, { recursive: true, force: true });
-fs.rmSync(runtimeModules, { recursive: true, force: true });
+try {
+  fs.rmSync(runtimeModules, { recursive: true, force: true });
+} catch (err) {
+  if (err.code === "EPERM" || err.code === "EBUSY") {
+    console.warn(`[WARN] runtimeModules locked by active broker process (${err.code}): skipping full purge.`);
+  } else {
+    throw err;
+  }
+}
 fs.mkdirSync(path.dirname(destination), { recursive: true });
 fs.cpSync(source, destination, { recursive: true });
 const sourceManifest = JSON.parse(fs.readFileSync(path.join(source, "broker-manifest.json"), "utf8"));
 const sourceAssetRoot = path.resolve(source, sourceManifest.assetRoot);
 const assetsDestination = path.join(destination, "resources");
 fs.mkdirSync(assetsDestination, { recursive: true });
-copyRequired(path.join(sourceAssetRoot, "scripts", "read-agy-credential.ps1"), path.join(assetsDestination, "scripts", "read-agy-credential.ps1"));
+for (const scriptFile of ["read-agy-credential.ps1", "read-all-credentials.ps1", "write-agy-credential.ps1", "switch-agy-account.ps1", "extract-ide-auth.py"]) {
+  copyRequired(path.join(sourceAssetRoot, "scripts", scriptFile), path.join(assetsDestination, "scripts", scriptFile));
+}
 copyRequired(path.join(sourceAssetRoot, "assets"), path.join(assetsDestination, "assets"), true);
 const copiedManifestPath = path.join(destination, "broker-manifest.json");
 const copiedManifest = JSON.parse(fs.readFileSync(copiedManifestPath, "utf8"));
@@ -47,7 +57,15 @@ fs.copyFileSync(path.join(__dirname, "canonical-broker-state.js"), path.join(res
 // executable extension; Unix treats the .exe suffix as an ordinary filename.
 fs.rmSync(path.join(resourceRoot, "node-runtime"), { force: true });
 const bundledNode = path.join(resourceRoot, "node-runtime.exe");
-fs.copyFileSync(process.execPath, bundledNode);
+try {
+  fs.copyFileSync(process.execPath, bundledNode);
+} catch (err) {
+  if (err.code === "EBUSY" || err.code === "EPERM") {
+    console.warn(`[WARN] node-runtime.exe locked by active broker process (${err.code}): skipping overwrite.`);
+  } else {
+    throw err;
+  }
+}
 if (process.platform !== "win32") fs.chmodSync(bundledNode, 0o755);
 
 // The native SQLCipher backend is optional for the VSIX (which must remain
@@ -80,7 +98,15 @@ function copyPackage(packageName) {
   // pnpm exposes workspace packages through symlinks; resolve the package
   // root before copying so the installer does not require Developer Mode.
   const realSource = fs.realpathSync(packageSource);
-  fs.cpSync(realSource, path.join(runtimeModules, packageName), { recursive: true, dereference: true });
+  try {
+    fs.cpSync(realSource, path.join(runtimeModules, packageName), { recursive: true, dereference: true });
+  } catch (err) {
+    if (err.code === "EBUSY" || err.code === "EPERM") {
+      console.warn(`[WARN] Skipping locked file in ${packageName} (${err.code}).`);
+    } else {
+      throw err;
+    }
+  }
   try {
     const manifest = JSON.parse(fs.readFileSync(path.join(realSource, "package.json"), "utf8"));
     for (const dependency of Object.keys({ ...(manifest.dependencies || {}), ...(manifest.peerDependencies || {}) })) copyPackage(dependency);

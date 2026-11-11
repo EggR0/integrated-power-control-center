@@ -80,7 +80,17 @@ const prefixOf = {
   "codex-5h": "codex", "codex-weekly": "codexWeekly",
   "antigravity": "antigravity", "argon": "argon", "opus": "opus", "codex": "codex",
 };
-const prewarmModelByWindow = { "gemini-5h": "antigravity", "argon-5h": "argon", "argon-weekly": "argon", "opus-5h": "opus", "codex-5h": "codex" };
+const prewarmModelByWindow = {
+  "gemini-5h": "antigravity",
+  "gemini-weekly": "antigravity",
+  "argon-5h": "argon",
+  "argon-weekly": "argon",
+  "opus-5h": "opus",
+  "opus-weekly": "opus",
+  "codex-5h": "codex",
+  "codex-weekly": "codex",
+};
+let providerDndController = null;
 
 const state = {
   capabilities: [],
@@ -119,6 +129,8 @@ const state = {
   hubPlaybooks: [],
   hubConfig: null,
   hubError: null,
+  lastManualPrewarmAt: 0,
+  seenPrewarmNotificationIds: new Set(),
 };
 
 const defaults = [
@@ -196,6 +208,16 @@ function applyTheme(themeName) {
     const btn = $(`theme-btn-${t}`);
     if (btn) btn.classList.toggle("active", t === chosen);
   });
+
+  const footerTheme = $("footer-version-theme");
+  if (footerTheme) {
+    const themeLabels = {
+      titanium: "Integrated Power v0.12.0 · Smoked Titanium Liquid Glass",
+      pearl: "Integrated Power v0.12.0 · Pearl White Liquid Glass",
+      cashmere: "Integrated Power v0.12.0 · Warm Cashmere Stone",
+    };
+    footerTheme.textContent = themeLabels[chosen] || themeLabels.titanium;
+  }
 }
 
 async function api(path, options = {}) {
@@ -517,126 +539,592 @@ function renderHomeActivityRings(ts) {
   }
 }
 
-function getEffectiveTokenStatus() {
-  const ts = state.tokenStatus || {};
-  const accounts = ts.accounts || {};
-  const gcpProjects = ts.gcpProjects || {};
+function getPrimaryAccount(ts) {
+  const accountsObj = Array.isArray(ts?.accounts)
+    ? Object.fromEntries(ts.accounts.map((a) => [a.email, a]))
+    : (ts?.accounts && typeof ts.accounts === "object" ? ts.accounts : {});
+  const accountEntries = Object.entries(accountsObj);
+  if (!accountEntries.length) return null;
 
-  if (!state.selectedQuotaId) {
-    state.selectedQuotaId = ts.activeAccountEmail || Object.keys(accounts)[0] || "";
+  const ideActive = accountEntries.find(([, a]) => a && a.isIdeActive);
+  if (ideActive) return ideActive[1];
+
+  if (ts.activeAccountEmail && accountsObj[ts.activeAccountEmail]) {
+    return accountsObj[ts.activeAccountEmail];
   }
 
-  // If selectedQuotaId is a user account
-  if (state.selectedQuotaId && accounts[state.selectedQuotaId]) {
-    const acc = accounts[state.selectedQuotaId];
-    return {
-      ...ts,
-      antigravityPercentage: acc.antigravityPercentage,
-      antigravityResetTime: acc.antigravityResetTime,
-      antigravityWeeklyPercentage: acc.antigravityWeeklyPercentage,
-      antigravityWeeklyResetTime: acc.antigravityWeeklyResetTime,
-      argonPercentage: acc.argonPercentage,
-      argonResetTime: acc.argonResetTime,
-      argonWeeklyPercentage: acc.argonWeeklyPercentage,
-      argonWeeklyResetTime: acc.argonWeeklyResetTime,
-      opusPercentage: acc.opusPercentage,
-      opusResetTime: acc.opusResetTime,
-      opusWeeklyPercentage: acc.opusWeeklyPercentage,
-      opusWeeklyResetTime: acc.opusWeeklyResetTime,
-      activeAccountEmail: acc.email,
-    };
-  }
-
-  return ts;
+  return accountEntries[0][1];
 }
 
-function renderTokens() {
-  const rawTs = state.tokenStatus || {};
-  const accounts = rawTs.accounts || {};
-  const gcpProjects = rawTs.gcpProjects || {};
-  const accountEntries = Object.entries(accounts);
-  const gcpEntries = Object.entries(gcpProjects);
+function getPrimaryTokenStatus(ts = {}, primaryAcc) {
+  if (!primaryAcc) return ts;
+  return {
+    ...ts,
+    antigravityPercentage: primaryAcc.antigravityPercentage ?? ts.antigravityPercentage,
+    antigravityResetTime: primaryAcc.antigravityResetTime ?? ts.antigravityResetTime,
+    antigravityTokensLeft: primaryAcc.antigravityTokensLeft ?? ts.antigravityTokensLeft,
+    antigravityMax: primaryAcc.antigravityMax ?? ts.antigravityMax,
+    antigravityEstimatedAbsolute: primaryAcc.antigravityEstimatedAbsolute ?? ts.antigravityEstimatedAbsolute,
+    antigravityWeeklyPercentage: primaryAcc.antigravityWeeklyPercentage ?? ts.antigravityWeeklyPercentage,
+    antigravityWeeklyResetTime: primaryAcc.antigravityWeeklyResetTime ?? ts.antigravityWeeklyResetTime,
+    antigravityWeeklyTokensLeft: primaryAcc.antigravityWeeklyTokensLeft ?? ts.antigravityWeeklyTokensLeft,
+    antigravityWeeklyMax: primaryAcc.antigravityWeeklyMax ?? ts.antigravityWeeklyMax,
+    antigravityWeeklyEstimatedAbsolute: primaryAcc.antigravityWeeklyEstimatedAbsolute ?? ts.antigravityWeeklyEstimatedAbsolute,
+    argonPercentage: primaryAcc.argonPercentage ?? ts.argonPercentage,
+    argonResetTime: primaryAcc.argonResetTime ?? ts.argonResetTime,
+    argonTokensLeft: primaryAcc.argonTokensLeft ?? ts.argonTokensLeft,
+    argonMax: primaryAcc.argonMax ?? ts.argonMax,
+    argonEstimatedAbsolute: primaryAcc.argonEstimatedAbsolute ?? ts.argonEstimatedAbsolute,
+    argonWeeklyPercentage: primaryAcc.argonWeeklyPercentage ?? ts.argonWeeklyPercentage,
+    argonWeeklyResetTime: primaryAcc.argonWeeklyResetTime ?? ts.argonWeeklyResetTime,
+    argonWeeklyTokensLeft: primaryAcc.argonWeeklyTokensLeft ?? ts.argonWeeklyTokensLeft,
+    argonWeeklyMax: primaryAcc.argonWeeklyMax ?? ts.argonWeeklyMax,
+    argonWeeklyEstimatedAbsolute: primaryAcc.argonWeeklyEstimatedAbsolute ?? ts.argonWeeklyEstimatedAbsolute,
+    opusPercentage: primaryAcc.opusPercentage ?? ts.opusPercentage,
+    opusResetTime: primaryAcc.opusResetTime ?? ts.opusResetTime,
+    opusTokensLeft: primaryAcc.opusTokensLeft ?? ts.opusTokensLeft,
+    opusMax: primaryAcc.opusMax ?? ts.opusMax,
+    opusEstimatedAbsolute: primaryAcc.opusEstimatedAbsolute ?? ts.opusEstimatedAbsolute,
+    opusWeeklyPercentage: primaryAcc.opusWeeklyPercentage ?? ts.opusWeeklyPercentage,
+    opusWeeklyResetTime: primaryAcc.opusWeeklyResetTime ?? ts.opusWeeklyResetTime,
+    opusWeeklyTokensLeft: primaryAcc.opusWeeklyTokensLeft ?? ts.opusWeeklyTokensLeft,
+    opusWeeklyMax: primaryAcc.opusWeeklyMax ?? ts.opusWeeklyMax,
+    opusWeeklyEstimatedAbsolute: primaryAcc.opusWeeklyEstimatedAbsolute ?? ts.opusWeeklyEstimatedAbsolute,
+    activeAccountEmail: primaryAcc.email,
+  };
+}
 
-  // Render Account / Project Selector Pills
-  const pillContainer = $("account-pill-container");
-  const barEl = $("account-selector-bar");
-  if (pillContainer) {
-    pillContainer.replaceChildren();
-    if (accountEntries.length > 0 || gcpEntries.length > 0) {
-      if (barEl) barEl.style.display = "flex";
-      if (!state.selectedQuotaId) {
-        state.selectedQuotaId = rawTs.activeAccountEmail || accountEntries[0]?.[0] || "";
-      }
+function getEffectiveTokenStatus() {
+  const ts = state.tokenStatus || {};
+  const primaryAcc = getPrimaryAccount(ts);
+  return getPrimaryTokenStatus(ts, primaryAcc);
+}
 
-      for (const [email, acc] of accountEntries) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        const isSelected = state.selectedQuotaId === email;
-        btn.className = `account-pill-btn apple-tactile${isSelected ? " active" : ""}${acc.isIdeActive ? " ide-active" : ""}${acc.error ? " has-error" : ""}`;
-        btn.textContent = `${email}${acc.isIdeActive ? " (IDE)" : ""}${acc.error ? " ⚠️" : ""}`;
-        btn.title = acc.error ? `오류: ${acc.error}` : `${email} 쿼터 보기`;
-        btn.onclick = () => {
-          state.selectedQuotaId = email;
-          renderTokens();
-        };
-        pillContainer.appendChild(btn);
-      }
+function createPrewarmButton(prewarmModel, windowId) {
+  const btn = document.createElement("button");
+  btn.className = "prewarm-action apple-tactile";
+  btn.type = "button";
+  btn.dataset.prewarmWindow = prewarmModel;
+  btn.dataset.windowId = windowId;
 
-      for (const [projId, proj] of gcpEntries) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        const isSelected = state.selectedQuotaId === projId;
-        btn.className = `account-pill-btn gcp-project apple-tactile${isSelected ? " active" : ""}`;
-        btn.textContent = `☁️ ${proj.label || projId}`;
-        btn.title = `GCP Vertex AI 프로젝트: ${projId}`;
-        btn.onclick = () => {
-          state.selectedQuotaId = projId;
-          renderTokens();
-        };
-        pillContainer.appendChild(btn);
-      }
-    } else if (barEl) {
-      barEl.style.display = "none";
+  const sFull = document.createElement("span");
+  sFull.className = "prewarm-action-full";
+  sFull.textContent = "⚡ Pre-warm";
+  const sMed = document.createElement("span");
+  sMed.className = "prewarm-action-medium";
+  sMed.textContent = "⚡ Prewarm";
+  const sShort = document.createElement("span");
+  sShort.className = "prewarm-action-short";
+  sShort.textContent = "⚡ Pre";
+  btn.append(sFull, sMed, sShort);
+  return btn;
+}
+
+function createQuotaRowSkeleton(windowName, prewarmModel, windowId, hasPrewarm) {
+  const row = document.createElement("div");
+  row.className = "quota-window-row";
+
+  const info = document.createElement("div");
+  info.className = "window-info";
+  const nameEl = document.createElement("span");
+  nameEl.className = "window-name";
+  nameEl.textContent = windowName;
+  const valEl = document.createElement("span");
+  valEl.className = "window-val";
+  valEl.textContent = "--% remaining";
+  info.append(nameEl, valEl);
+
+  let footer = null;
+  const countdown = document.createElement("p");
+  countdown.className = "window-countdown";
+  countdown.textContent = "· Waiting for quota";
+
+  if (hasPrewarm) {
+    footer = document.createElement("div");
+    footer.className = "quota-window-footer";
+    footer.appendChild(countdown);
+
+    const btn = createPrewarmButton(prewarmModel, windowId);
+    footer.appendChild(btn);
+  }
+
+  const track = document.createElement("div");
+  track.className = "progress-track";
+  const bar = document.createElement("div");
+  bar.className = `progress-fill ${prewarmModel === "opus" ? "opus" : "gemini"}`;
+  bar.style.width = "0%";
+  track.appendChild(bar);
+
+  const tokens = document.createElement("p");
+  tokens.className = "window-tokens";
+
+  row.append(info, footer || countdown, track, tokens);
+  return row;
+}
+
+function renderAccountCard(acc, grid, anchorEl) {
+  const slug = acc.email.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const cardId = `provider-account-${slug}`;
+  const dataProvider = `account:${acc.email}`;
+  let card = document.getElementById(cardId);
+
+  if (!card) {
+    card = document.createElement("div");
+    card.className = "card provider-card liquid-card";
+    card.id = cardId;
+    card.dataset.provider = dataProvider;
+    card.dataset.accountEmail = acc.email;
+
+    const header = document.createElement("div");
+    header.className = "provider-header";
+
+    const pill = document.createElement("span");
+    pill.className = "provider-pill";
+    pill.dataset.ref = "pill";
+
+    const emailTag = document.createElement("span");
+    emailTag.className = "account-email-tag";
+    emailTag.dataset.ref = "email";
+
+    const stateTag = document.createElement("span");
+    stateTag.className = "provider-state-tag";
+    stateTag.dataset.ref = "state";
+
+    const prewarmBtn = document.createElement("button");
+    prewarmBtn.className = "prewarm-settings-btn apple-tactile";
+    prewarmBtn.type = "button";
+    prewarmBtn.dataset.prewarmTarget = "antigravity-2";
+    prewarmBtn.title = "프리웜 설정";
+    prewarmBtn.textContent = "⚙ 프리웜";
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "provider-toggle apple-tactile";
+    toggleBtn.type = "button";
+    toggleBtn.dataset.provider = dataProvider;
+    toggleBtn.title = "블록 접기/펼치기";
+    toggleBtn.dataset.ref = "toggle";
+    toggleBtn.textContent = providerVisibility[dataProvider] !== false ? "접기" : "펼치기";
+
+    header.append(pill, emailTag, stateTag, prewarmBtn, toggleBtn);
+
+    const models = document.createElement("div");
+    models.className = "provider-models";
+    models.dataset.ref = "models";
+
+    const errBanner = document.createElement("div");
+    errBanner.className = "account-error-banner";
+    errBanner.style.display = "none";
+    errBanner.dataset.ref = "errorBanner";
+    models.appendChild(errBanner);
+
+    // 1. Gemini block
+    const geminiBlock = document.createElement("div");
+    geminiBlock.className = "model-block";
+    const geminiTitleRow = document.createElement("div");
+    geminiTitleRow.className = "model-name-row";
+    const geminiH4 = document.createElement("h4");
+    geminiH4.textContent = "Gemini";
+    const geminiPrewarmBtn = createPrewarmButton("antigravity", "gemini-5h");
+    geminiTitleRow.append(geminiH4, geminiPrewarmBtn);
+    geminiBlock.appendChild(geminiTitleRow);
+
+    const gemini5hRow = createQuotaRowSkeleton("5Hours", "antigravity", "gemini-5h", false);
+    gemini5hRow.dataset.rowId = "gemini-5h";
+    const geminiWeeklyRow = createQuotaRowSkeleton("Weekly", "antigravity", "gemini-weekly", false);
+    geminiWeeklyRow.dataset.rowId = "gemini-weekly";
+    geminiBlock.append(gemini5hRow, geminiWeeklyRow);
+
+    // 2. Argon block
+    const argonBlock = document.createElement("div");
+    argonBlock.className = "model-block";
+    argonBlock.style.marginTop = "14px";
+    argonBlock.style.paddingTop = "14px";
+    argonBlock.style.borderTop = "1px solid var(--glass-border-subtle)";
+    const argonTitleRow = document.createElement("div");
+    argonTitleRow.className = "model-name-row";
+    const argonH4 = document.createElement("h4");
+    argonH4.textContent = "Gemini 4 Argon";
+    const argonPrewarmBtn = createPrewarmButton("argon", "argon-weekly");
+    argonTitleRow.append(argonH4, argonPrewarmBtn);
+    argonBlock.appendChild(argonTitleRow);
+
+    const argon5hRow = createQuotaRowSkeleton("5Hours", "argon", "argon-5h", false);
+    argon5hRow.dataset.rowId = "argon-5h";
+    const argonWeeklyRow = createQuotaRowSkeleton("Weekly", "argon", "argon-weekly", false);
+    argonWeeklyRow.dataset.rowId = "argon-weekly";
+    argonBlock.append(argon5hRow, argonWeeklyRow);
+
+    // 3. Claude block
+    const claudeBlock = document.createElement("div");
+    claudeBlock.className = "model-block";
+    claudeBlock.style.marginTop = "14px";
+    claudeBlock.style.paddingTop = "14px";
+    claudeBlock.style.borderTop = "1px solid var(--glass-border-subtle)";
+    const claudeTitleRow = document.createElement("div");
+    claudeTitleRow.className = "model-name-row";
+    const claudeH4 = document.createElement("h4");
+    claudeH4.textContent = "Claude";
+    const claudePrewarmBtn = createPrewarmButton("opus", "opus-5h");
+    claudeTitleRow.append(claudeH4, claudePrewarmBtn);
+    claudeBlock.appendChild(claudeTitleRow);
+
+    const claude5hRow = createQuotaRowSkeleton("5Hours", "opus", "opus-5h", false);
+    claude5hRow.dataset.rowId = "opus-5h";
+    const claudeWeeklyRow = createQuotaRowSkeleton("Weekly", "opus", "opus-weekly", false);
+    claudeWeeklyRow.dataset.rowId = "opus-weekly";
+    claudeBlock.append(claude5hRow, claudeWeeklyRow);
+
+    models.append(geminiBlock, argonBlock, claudeBlock);
+    card.append(header, models);
+
+    if (anchorEl) {
+      grid.insertBefore(card, anchorEl);
+    } else {
+      grid.appendChild(card);
     }
   }
 
-  const ts = getEffectiveTokenStatus();
-  renderHomeActivityRings(ts);
+  updateAccountCardData(card, acc);
+  return card;
+}
 
+function updateAccountCardData(card, acc) {
+  const pillEl = card.querySelector('[data-ref="pill"]');
+  if (pillEl) {
+    pillEl.textContent = acc.label || (acc.isIdeActive ? "Antigravity IDE" : "Antigravity 2.0");
+  }
+  const emailEl = card.querySelector('[data-ref="email"]');
+  if (emailEl) {
+    emailEl.textContent = acc.email;
+    emailEl.title = acc.email;
+  }
+  const stateEl = card.querySelector('[data-ref="state"]');
+  if (stateEl) {
+    stateEl.textContent = acc.isIdeActive ? "Active IDE" : (acc.error ? "오류" : "연결됨");
+    stateEl.className = `provider-state-tag${acc.isIdeActive ? " online" : acc.error ? " critical" : ""}`;
+  }
+  const toggleEl = card.querySelector('[data-ref="toggle"]');
+  if (toggleEl) {
+    const visible = providerVisibility[card.dataset.provider] !== false;
+    toggleEl.textContent = visible ? "숨기기" : "보기";
+    toggleEl.classList.toggle("is-off", !visible);
+    card.style.display = visible ? "" : "none";
+  }
+
+  const errBanner = card.querySelector('[data-ref="errorBanner"]');
+  if (errBanner) {
+    if (acc.error) {
+      errBanner.textContent = `오류: ${acc.error}`;
+      errBanner.style.display = "";
+      errBanner.style.fontSize = "11px";
+      errBanner.style.color = "var(--accent-rose)";
+      errBanner.style.padding = "6px 8px";
+      errBanner.style.background = "rgba(239, 68, 68, 0.1)";
+      errBanner.style.borderRadius = "6px";
+      errBanner.style.marginBottom = "8px";
+    } else {
+      errBanner.textContent = "";
+      errBanner.style.display = "none";
+    }
+  }
+
+  const accTs = getPrimaryTokenStatus({}, acc);
   const windows = {
-    "gemini-5h": buildTokenMetric("5Hours", ts, "antigravity", "Gemini 5Hours", "antigravityWeekly"),
-    "gemini-weekly": buildTokenMetric("Weekly", ts, "antigravityWeekly", "Gemini Weekly"),
-    "argon-5h": buildTokenMetric("5Hours", ts, "argon", "Argon 4 5Hours", "argonWeekly"),
-    "argon-weekly": buildTokenMetric("Weekly", ts, "argonWeekly", "Argon 4 Weekly"),
-    "opus-5h": buildTokenMetric("5Hours", ts, "opus", "Claude 5Hours", "opusWeekly"),
-    "opus-weekly": buildTokenMetric("Weekly", ts, "opusWeekly", "Claude Weekly"),
-    "codex-5h": buildTokenMetric("5Hours", ts, "codex", "ChatGPT 5Hours", "codexWeekly"),
-    "codex-weekly": buildTokenMetric("Weekly", ts, "codexWeekly", "ChatGPT Weekly"),
+    "gemini-5h": buildTokenMetric("5Hours", accTs, "antigravity", "Gemini 5Hours", "antigravityWeekly"),
+    "gemini-weekly": buildTokenMetric("Weekly", accTs, "antigravityWeekly", "Gemini Weekly"),
+    "argon-5h": buildTokenMetric("5Hours", accTs, "argon", "Argon 4 5Hours", "argonWeekly"),
+    "argon-weekly": buildTokenMetric("Weekly", accTs, "argonWeekly", "Argon 4 Weekly"),
+    "opus-5h": buildTokenMetric("5Hours", accTs, "opus", "Claude 5Hours", "opusWeekly"),
+    "opus-weekly": buildTokenMetric("Weekly", accTs, "opusWeekly", "Claude Weekly"),
+  };
+
+  const noDataText = state.tokenStatusError ? "쿼터 갱신 실패" : "쿼터 대기 중";
+  for (const [id, m] of Object.entries(windows)) {
+    const row = card.querySelector(`[data-row-id="${id}"]`);
+    if (!row) continue;
+    if (id === "argon-5h") {
+      row.style.display = m.unavailable ? "none" : "";
+    }
+    const valEl = row.querySelector(".window-val");
+    if (valEl) {
+      valEl.textContent = m.unavailable
+        ? noDataText
+        : m.isWeeklyExhausted
+          ? "0.00% remaining (Weekly exhausted)"
+          : `${m.percentage.toFixed(2)}% remaining`;
+      valEl.title = m.tooltip || "";
+    }
+    const countdownEl = row.querySelector(".window-countdown");
+    if (countdownEl) {
+      countdownEl.textContent = m.refreshFull || `· ${noDataText}`;
+      countdownEl.title = m.tooltip || "";
+    }
+    const prewarmBtn = card.querySelector(`.prewarm-action[data-window-id="${id}"]`) || row.querySelector(".prewarm-action");
+    if (prewarmBtn) {
+      const model = prewarmModelByWindow[id];
+      const windowType = id.endsWith("-weekly") ? "weekly" : "5h";
+      const target = PREWARM_TARGETS.find((c) => c.model === model && (c.window === windowType || (!c.window && windowType === "5h")));
+      let allowed = Boolean(target && canTriggerPrewarm(m));
+      let activeWindowId = id;
+      if (!allowed && id === "gemini-5h" && windows["gemini-weekly"] && canTriggerPrewarm(windows["gemini-weekly"])) {
+        allowed = true;
+        activeWindowId = "gemini-weekly";
+      } else if (!allowed && id === "opus-5h" && windows["opus-weekly"] && canTriggerPrewarm(windows["opus-weekly"])) {
+        allowed = true;
+        activeWindowId = "opus-weekly";
+      }
+      const activeMetric = activeWindowId !== id ? windows[activeWindowId] : m;
+      const reason = activeMetric.unavailable
+        ? "쿼터 정보를 확인할 수 없습니다."
+        : activeMetric.isWeeklyExhausted
+          ? "주간 쿼터 소진으로 프리웜을 실행할 수 없습니다."
+          : !allowed && activeMetric.refreshFull
+            ? `재충전 중입니다 (${activeMetric.refreshFull}).`
+            : "쿼터가 100%이고 시간이 꽉 차 있을 때 실행할 수 있습니다.";
+      prewarmBtn.disabled = !allowed;
+      prewarmBtn.title = allowed
+        ? "100% 대기 윈도우에 최소 영문 핑(say hi) 후 즉시 취소하여 브로커에 프리웜 실행을 요청합니다. 원격 타이머 시작 여부는 요청 시점에는 확인되지 않습니다."
+        : reason;
+      prewarmBtn.setAttribute("aria-label", `${target?.displayName || id} pre-warm${allowed ? "" : ` disabled: ${reason}`}`);
+      prewarmBtn.onclick = allowed ? () => window.triggerPrewarmWindow && window.triggerPrewarmWindow(activeWindowId, acc.email) : null;
+    }
+    const bar = row.querySelector(".progress-fill");
+    if (bar) {
+      const displayPct = typeof m.displayPercentage === "number" ? m.displayPercentage : m.percentage;
+      bar.style.width = `${Math.max(0, Math.min(100, displayPct ?? 0))}%`;
+      bar.classList.toggle("warning", m.tone === "warning");
+      bar.classList.toggle("critical", m.tone === "critical");
+      bar.title = m.tooltip || "";
+    }
+    if (gaugeTicksEnabled()) {
+      const track = bar && bar.parentElement;
+      if (track && track.classList.contains("progress-track")) {
+        let ticks = track.querySelector(".progress-ticks");
+        if (!ticks) {
+          ticks = document.createElement("div");
+          ticks.className = "progress-ticks";
+          track.appendChild(ticks);
+        }
+        const segments = id.endsWith("weekly") ? 7 : 5;
+        ticks.dataset.segments = String(segments);
+        ticks.style.backgroundImage = buildGaugeTickGradient(segments);
+        ticks.style.display = "";
+      }
+    } else if (bar) {
+      const track = bar.parentElement;
+      const ticks = track && track.querySelector(".progress-ticks");
+      if (ticks) ticks.style.display = "none";
+    }
+    const tokensEl = row.querySelector(".window-tokens");
+    if (tokensEl) {
+      const p = prefixOf[id];
+      const text = absoluteTokenText(accTs[`${p}TokensLeft`], accTs[`${p}Max`], accTs[`${p}EstimatedAbsolute`]);
+      tokensEl.textContent = text || "";
+    }
+  }
+}
+
+function updateProviderMetrics(prefix, accTs, email) {
+  const windows = {
+    "gemini-5h": buildTokenMetric("5Hours", accTs, "antigravity", "Gemini 5Hours", "antigravityWeekly"),
+    "gemini-weekly": buildTokenMetric("Weekly", accTs, "antigravityWeekly", "Gemini Weekly"),
+    "argon-5h": buildTokenMetric("5Hours", accTs, "argon", "Argon 4 5Hours", "argonWeekly"),
+    "argon-weekly": buildTokenMetric("Weekly", accTs, "argonWeekly", "Argon 4 Weekly"),
+    "opus-5h": buildTokenMetric("5Hours", accTs, "opus", "Claude 5Hours", "opusWeekly"),
+    "opus-weekly": buildTokenMetric("Weekly", accTs, "opusWeekly", "Claude Weekly"),
   };
   const noDataText = state.tokenStatusError ? "쿼터 갱신 실패" : "쿼터 대기 중";
-
-  const argon5hRow = $("row-argon-5h");
+  const argon5hRow = $(prefix ? `row-${prefix}-argon-5h` : "row-argon-5h");
   if (argon5hRow) {
     argon5hRow.style.display = windows["argon-5h"].unavailable ? "none" : "";
   }
   for (const [id, m] of Object.entries(windows)) {
+    const elId = prefix ? `${prefix}-${id}` : id;
+    const label = $(`label-${elId}`);
+    if (label) {
+      label.textContent = m.unavailable
+        ? noDataText
+        : m.isWeeklyExhausted
+          ? "0.00% remaining (Weekly exhausted)"
+          : `${m.percentage.toFixed(2)}% remaining`;
+      label.title = m.tooltip || "";
+    }
+    const reset = $(`reset-${elId}`);
+    if (reset) {
+      reset.textContent = m.refreshFull || `· ${noDataText}`;
+      reset.title = m.tooltip || "";
+      reset.style.cursor = "";
+      reset.onclick = null;
+    }
+    const prewarmButton = $(`prewarm-${elId}`);
+    if (prewarmButton) {
+      const model = prewarmModelByWindow[id];
+      const windowType = id.endsWith("-weekly") ? "weekly" : "5h";
+      const target = PREWARM_TARGETS.find((c) => c.model === model && (c.window === windowType || (!c.window && windowType === "5h")));
+      let allowed = Boolean(target && canTriggerPrewarm(m));
+      let activeWindowId = id;
+      if (!allowed && id === "gemini-5h" && windows["gemini-weekly"] && canTriggerPrewarm(windows["gemini-weekly"])) {
+        allowed = true;
+        activeWindowId = "gemini-weekly";
+      } else if (!allowed && id === "opus-5h" && windows["opus-weekly"] && canTriggerPrewarm(windows["opus-weekly"])) {
+        allowed = true;
+        activeWindowId = "opus-weekly";
+      }
+      const activeMetric = activeWindowId !== id ? windows[activeWindowId] : m;
+      const reason = activeMetric.unavailable
+        ? "쿼터 정보를 확인할 수 없습니다."
+        : activeMetric.isWeeklyExhausted
+          ? "주간 쿼터 소진으로 프리웜을 실행할 수 없습니다."
+          : !allowed && activeMetric.refreshFull
+            ? `재충전 중입니다 (${activeMetric.refreshFull}).`
+            : "쿼터가 100%이고 시간이 꽉 차 있을 때 실행할 수 있습니다.";
+      prewarmButton.disabled = !allowed;
+      prewarmButton.title = allowed
+        ? "100% 대기 윈도우에 최소 영문 핑(say hi) 후 즉시 취소하여 브로커에 프리웜 실행을 요청합니다. 원격 타이머 시작 여부는 요청 시점에는 확인되지 않습니다."
+        : reason;
+      prewarmButton.setAttribute("aria-label", `${target?.displayName || id} pre-warm${allowed ? "" : ` disabled: ${reason}`}`);
+      prewarmButton.onclick = allowed ? () => window.triggerPrewarmWindow && window.triggerPrewarmWindow(activeWindowId, email) : null;
+    }
+    const bar = $(`bar-${elId}`);
+    if (bar) {
+      const displayPct = typeof m.displayPercentage === "number" ? m.displayPercentage : m.percentage;
+      bar.style.width = `${Math.max(0, Math.min(100, displayPct ?? 0))}%`;
+      bar.classList.toggle("warning", m.tone === "warning");
+      bar.classList.toggle("critical", m.tone === "critical");
+      bar.title = m.tooltip || "";
+    }
+    if (gaugeTicksEnabled()) {
+      const track = bar && bar.parentElement;
+      if (track && track.classList.contains("progress-track")) {
+        let ticks = track.querySelector(".progress-ticks");
+        if (!ticks) {
+          ticks = document.createElement("div");
+          ticks.className = "progress-ticks";
+          track.appendChild(ticks);
+        }
+        const segments = id.endsWith("weekly") ? 7 : 5;
+        ticks.dataset.segments = String(segments);
+        ticks.style.backgroundImage = buildGaugeTickGradient(segments);
+        ticks.style.display = "";
+      }
+    } else if (bar) {
+      const track = bar.parentElement;
+      const ticks = track && track.querySelector(".progress-ticks");
+      if (ticks) ticks.style.display = "none";
+    }
+    const abs = $(`tokens-${elId}`);
+    if (abs) {
+      const p = prefixOf[id];
+      const text = absoluteTokenText(accTs[`${p}TokensLeft`], accTs[`${p}Max`], accTs[`${p}EstimatedAbsolute`]);
+      abs.textContent = text || "";
+    }
+  }
+}
+
+function renderTokens() {
+  const barEl = $("account-selector-bar");
+  if (barEl) barEl.style.display = "none";
+
+  const rawTs = state.tokenStatus || {};
+  const accountsObj = Array.isArray(rawTs.accounts)
+    ? Object.fromEntries(rawTs.accounts.map((a) => [a.email, a]))
+    : (rawTs.accounts && typeof rawTs.accounts === "object" ? rawTs.accounts : {});
+  const accountEntries = Object.entries(accountsObj);
+
+  // 1. Identify Dedicated Blocks: Antigravity IDE & Antigravity 2.0
+  const ideAcc = accountsObj["yip1004@gmail.com"]
+    || accountEntries.find(([, a]) => a && a.isIdeActive)?.[1]
+    || { email: "yip1004@gmail.com", isIdeActive: true };
+
+  const agy2Acc = accountsObj["egg.r0000@gmail.com"]
+    || accountEntries.find(([, a]) => a && !a.isIdeActive && a.email !== ideAcc.email)?.[1]
+    || { email: "egg.r0000@gmail.com", isIdeActive: false };
+
+  // Activity rings on Home follow active IDE account
+  const primaryAcc = ideAcc;
+  const ts = getPrimaryTokenStatus(rawTs, primaryAcc);
+  renderHomeActivityRings(ts);
+
+  // 2. Update Group 1: Antigravity IDE (#provider-antigravity)
+  const agyPill = $("antigravity-provider-pill") || document.querySelector("#provider-antigravity .provider-pill");
+  if (agyPill) agyPill.textContent = "Antigravity IDE";
+  const agyEmail = $("antigravity-account-email") || document.querySelector("#provider-antigravity .account-email-tag");
+  if (agyEmail) {
+    agyEmail.textContent = ideAcc.email || "yip1004@gmail.com";
+    agyEmail.title = ideAcc.email || "yip1004@gmail.com";
+    agyEmail.style.display = "";
+  }
+  const agyState = $("antigravity-provider-state-tag") || document.querySelector("#provider-antigravity .provider-state-tag");
+  if (agyState) {
+    agyState.textContent = ideAcc.isIdeActive ? "Active IDE" : (ideAcc.error ? "오류" : "연결됨");
+    agyState.className = `provider-state-tag${ideAcc.isIdeActive ? " online" : ideAcc.error ? " critical" : ""}`;
+  }
+  const agyErr = $("antigravity-account-error");
+  if (agyErr) {
+    if (ideAcc?.error) {
+      agyErr.textContent = `오류: ${ideAcc.error}`;
+      agyErr.style.display = "";
+    } else {
+      agyErr.textContent = "";
+      agyErr.style.display = "none";
+    }
+  }
+  const ideTs = getPrimaryTokenStatus(rawTs, ideAcc);
+  updateProviderMetrics("", ideTs, ideAcc.email);
+
+  // 3. Update Group 1B: Antigravity 2.0 (#provider-antigravity-2)
+  const agy2Pill = $("antigravity-2-provider-pill") || document.querySelector("#provider-antigravity-2 .provider-pill");
+  if (agy2Pill) agy2Pill.textContent = "Antigravity 2.0";
+  const agy2Email = $("antigravity-2-account-email") || document.querySelector("#provider-antigravity-2 .account-email-tag");
+  if (agy2Email) {
+    agy2Email.textContent = agy2Acc.email || "egg.r0000@gmail.com";
+    agy2Email.title = agy2Acc.email || "egg.r0000@gmail.com";
+    agy2Email.style.display = "";
+  }
+  const agy2State = $("antigravity-2-provider-state-tag") || document.querySelector("#provider-antigravity-2 .provider-state-tag");
+  if (agy2State) {
+    agy2State.textContent = agy2Acc.isIdeActive ? "Active IDE" : (agy2Acc.error ? "오류" : "연결됨");
+    agy2State.className = `provider-state-tag${agy2Acc.isIdeActive ? " online" : agy2Acc.error ? " critical" : ""}`;
+  }
+  const agy2Err = $("antigravity-2-account-error");
+  if (agy2Err) {
+    if (agy2Acc?.error) {
+      agy2Err.textContent = `오류: ${agy2Acc.error}`;
+      agy2Err.style.display = "";
+    } else {
+      agy2Err.textContent = "";
+      agy2Err.style.display = "none";
+    }
+  }
+  const agy2Ts = getPrimaryTokenStatus(rawTs, agy2Acc);
+  updateProviderMetrics("agy2", agy2Ts, agy2Acc.email);
+
+  // 4. Update Group 2: OpenAI (Codex 5h & Weekly)
+  const noDataText = state.tokenStatusError ? "쿼터 갱신 실패" : "쿼터 대기 중";
+  const codexWindows = {
+    "codex-5h": buildTokenMetric("5Hours", ts, "codex", "ChatGPT 5Hours", "codexWeekly"),
+    "codex-weekly": buildTokenMetric("Weekly", ts, "codexWeekly", "ChatGPT Weekly"),
+  };
+  for (const [id, m] of Object.entries(codexWindows)) {
     const label = $(`label-${id}`);
     if (label) {
-      label.textContent = m.unavailable ? noDataText : m.isWeeklyExhausted ? "0.00% remaining (Weekly exhausted)" : `${m.percentage.toFixed(2)}% remaining`;
-      label.title = m.tooltip;
+      label.textContent = m.unavailable
+        ? noDataText
+        : m.isWeeklyExhausted
+          ? "0.00% remaining (Weekly exhausted)"
+          : `${m.percentage.toFixed(2)}% remaining`;
+      label.title = m.tooltip || "";
     }
     const reset = $(`reset-${id}`);
     if (reset) {
       reset.textContent = m.refreshFull || `· ${noDataText}`;
-      reset.title = m.tooltip;
-      reset.style.cursor = "";
-      reset.onclick = null;
+      reset.title = m.tooltip || "";
     }
     const prewarmButton = $(`prewarm-${id}`);
     if (prewarmButton) {
       const model = prewarmModelByWindow[id];
       const windowType = id.endsWith("-weekly") ? "weekly" : "5h";
-      const target = PREWARM_TARGETS.find((candidate) => candidate.model === model && (candidate.window === windowType || (!candidate.window && windowType === "5h")));
+      const target = PREWARM_TARGETS.find((c) => c.model === model && (c.window === windowType || (!c.window && windowType === "5h")));
       const allowed = Boolean(target && canTriggerPrewarm(m));
       const reason = m.unavailable
         ? "쿼터 정보를 확인할 수 없습니다."
@@ -647,7 +1135,7 @@ function renderTokens() {
             : "쿼터가 100%이고 시간이 꽉 차 있을 때 실행할 수 있습니다.";
       prewarmButton.disabled = !allowed;
       prewarmButton.title = allowed
-        ? "브로커에 프리웜 실행을 요청합니다. 실제 실행 여부와 원격 타이머 시작은 확인되지 않습니다."
+        ? "100% 대기 윈도우에 최소 영문 핑(say hi) 후 즉시 취소하여 브로커에 프리웜 실행을 요청합니다. 원격 타이머 시작 여부는 요청 시점에는 확인되지 않습니다."
         : reason;
       prewarmButton.setAttribute("aria-label", `${target?.displayName || id} pre-warm${allowed ? "" : ` disabled: ${reason}`}`);
       prewarmButton.onclick = allowed ? () => window.triggerPrewarmWindow && window.triggerPrewarmWindow(id) : null;
@@ -658,7 +1146,7 @@ function renderTokens() {
       bar.style.width = `${Math.max(0, Math.min(100, displayPct ?? 0))}%`;
       bar.classList.toggle("warning", m.tone === "warning");
       bar.classList.toggle("critical", m.tone === "critical");
-      bar.title = m.tooltip;
+      bar.title = m.tooltip || "";
     }
     if (gaugeTicksEnabled()) {
       const track = bar && bar.parentElement;
@@ -686,6 +1174,37 @@ function renderTokens() {
       abs.textContent = text || "";
     }
   }
+
+  // 5. Render any remaining 3rd+ accounts dynamically
+  const grid = document.querySelector(".token-providers-grid");
+  const knownEmails = new Set([ideAcc.email, agy2Acc.email].filter(Boolean));
+  const otherAccounts = accountEntries
+    .filter(([email]) => !knownEmails.has(email))
+    .map(([, acc]) => acc);
+
+  const validSlugs = new Set();
+  if (grid) {
+    const openaiCard = $("provider-openai");
+    for (const acc of otherAccounts) {
+      if (!acc || !acc.email) continue;
+      const slug = acc.email.replace(/[^a-zA-Z0-9_-]/g, "_");
+      validSlugs.add(slug);
+      renderAccountCard(acc, grid, openaiCard);
+    }
+
+    grid.querySelectorAll(":scope > [id^='provider-account-']").forEach((el) => {
+      const slug = el.id.replace("provider-account-", "");
+      if (!validSlugs.has(slug)) {
+        el.remove();
+      }
+    });
+  }
+
+  if (providerDndController) {
+    providerDndController.bindAll();
+    providerDndController.restoreOrder();
+  }
+  applyProviderVisibility();
 
   const summary = calculateCapacitySummary(ts);
   const summaryEl = $("token-capacity-summary");
@@ -1477,6 +1996,55 @@ async function refresh({ force = false } = {}) {
       } else {
         checkTokenFullNotification(state.previousTokenStatus, state.tokenStatus);
       }
+      if (state.brokerHealth?.capabilities?.includes("quota.prewarm.notifications")) {
+        try {
+          const prewarmClaim = await api("/v1/notifications/prewarm?consumer=ipcc", { method: "POST", body: JSON.stringify({}) });
+          if (prewarmClaim.ok && Array.isArray(prewarmClaim.notifications) && prewarmClaim.notifications.length) {
+            const now = Date.now();
+            const recentManual2500 = (now - (state.lastManualPrewarmAt || 0)) < 2500;
+            const recentManual3000 = (now - (state.lastManualPrewarmAt || 0)) < 3000;
+            for (const item of prewarmClaim.notifications) {
+              if (!item || !item.id) continue;
+              if (state.seenPrewarmNotificationIds.has(item.id)) continue;
+              state.seenPrewarmNotificationIds.add(item.id);
+              if (state.seenPrewarmNotificationIds.size > 200) {
+                const oldest = state.seenPrewarmNotificationIds.values().next().value;
+                if (oldest) state.seenPrewarmNotificationIds.delete(oldest);
+              }
+
+              const msg = item.message || item.title || (typeof item === "string" ? item : `프리웜: ${item.model || item.target || "모델"}`);
+              if (item.status === "verified" || item.timerConfirmed === true) {
+                showToast(`✅ [Pre-warm 확인] ${msg}`, false);
+                sendDesktopNotification("✅ [Integrated Power] 프리웜 타이머 시작 확인", msg);
+              } else if (item.status === "unconfirmed") {
+                showToast(`⚠️ [Pre-warm 미확인] ${msg}`, true);
+                sendDesktopNotification("⚠️ [Integrated Power] 프리웜 미확인", msg);
+              } else if (item.status === "failed" || item.level === "error") {
+                if (!recentManual2500) {
+                  showToast(`⚠️ [Pre-warm 실패] ${msg}`, true);
+                  sendDesktopNotification("⚠️ [Integrated Power] 프리웜 실패", msg);
+                }
+              } else if (item.status === "skipped" || item.level === "warn") {
+                if (!recentManual2500) {
+                  showToast(`ℹ️ [Pre-warm 건너뜀] ${msg}`, false);
+                }
+              } else if (item.status === "dispatched") {
+                if (!recentManual3000) {
+                  showToast(`⚡ [Pre-warm 실행] ${msg}`, false);
+                }
+              } else {
+                showToast(`⚡ [Pre-warm] ${msg}`, false);
+              }
+            }
+            if (state.activeTab === "logs") void refreshLogs();
+          }
+        } catch (error) {
+          if (!state.prewarmNotificationClaimWarningShown) {
+            state.prewarmNotificationClaimWarningShown = true;
+            showToast(`프리웜 알림 확인 실패: ${error.message}`, true);
+          }
+        }
+      }
     } else {
       state.previousTokenStatus = state.tokenStatus;
       state.tokenStatus = null;
@@ -1516,6 +2084,236 @@ async function refresh({ force = false } = {}) {
   }
 }
 
+let activeDragItem = null;
+let activeDragContainer = null;
+let suppressClick = false;
+
+if (typeof window !== "undefined") {
+  window.addEventListener(
+    "click",
+    (e) => {
+      if (suppressClick) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        suppressClick = false;
+      }
+    },
+    true
+  );
+}
+
+export function setupDragAndDropReorder({
+  containerSelector,
+  itemSelector,
+  storageKey,
+  getId = (el) => el.dataset.launcher || el.dataset.provider || el.id,
+  findItem,
+  anchorSelector,
+}) {
+  const container = typeof containerSelector === "string" ? document.querySelector(containerSelector) : containerSelector;
+  if (!container) return { restoreOrder: () => {}, saveOrder: () => {}, bindAll: () => {}, bindItem: () => {} };
+
+  const defaultFindItem = (cont, id) => {
+    try {
+      const escaped = CSS.escape ? CSS.escape(id) : id.replace(/["\\]/g, '\\$&');
+      return cont.querySelector(`[data-launcher="${escaped}"], [data-provider="${escaped}"], #${escaped}, #provider-${escaped}`);
+    } catch {
+      return Array.from(cont.querySelectorAll(`:scope > ${itemSelector}`)).find((el) =>
+        el.dataset.launcher === id || el.dataset.provider === id || el.id === id || el.id === `provider-${id}`
+      );
+    }
+  };
+  const resolveItem = findItem || defaultFindItem;
+
+  const saveOrder = () => {
+    const currentItems = Array.from(container.querySelectorAll(`:scope > ${itemSelector}`));
+    const order = currentItems.map(getId).filter(Boolean);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(order));
+    } catch {
+      /* non-critical */
+    }
+  };
+
+  const restoreOrder = () => {
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(storageKey));
+    } catch {
+      saved = null;
+    }
+    if (!Array.isArray(saved) || !saved.length) return;
+
+    const anchor = anchorSelector ? container.querySelector(anchorSelector) : null;
+    const currentItems = Array.from(container.querySelectorAll(`:scope > ${itemSelector}`));
+    const itemMap = new Map();
+    for (const el of currentItems) {
+      const id = getId(el);
+      if (id) itemMap.set(id, el);
+    }
+
+    const orderedItems = [];
+    for (const id of saved) {
+      const el = itemMap.get(id) || resolveItem(container, id);
+      if (el && el.parentElement === container && !orderedItems.includes(el)) {
+        orderedItems.push(el);
+      }
+    }
+    for (const el of currentItems) {
+      if (!orderedItems.includes(el)) {
+        if (el.dataset.provider?.startsWith("account:") || el.id === "provider-antigravity-2" || el.dataset.provider === "antigravity-2") {
+          const agyIdx = orderedItems.findIndex((item) => item.id === "provider-antigravity" || item.dataset.provider === "antigravity");
+          if (agyIdx !== -1) {
+            orderedItems.splice(agyIdx + 1, 0, el);
+            continue;
+          }
+        }
+        orderedItems.push(el);
+      }
+    }
+
+    for (const el of orderedItems) {
+      if (anchor) {
+        container.insertBefore(el, anchor);
+      } else {
+        container.appendChild(el);
+      }
+    }
+  };
+
+  const bindItem = (item) => {
+    if (!item || item.__dndBound) return;
+    item.__dndBound = true;
+    item.setAttribute("draggable", "true");
+
+    item.addEventListener("mousedown", (e) => {
+      const interactive = e.target.closest(
+        "button, input, select, textarea, a, label, .provider-toggle, .prewarm-action, .switch-toggle"
+      );
+      if (interactive && interactive !== item && item.contains(interactive)) {
+        item.draggable = false;
+      } else {
+        item.draggable = true;
+      }
+    });
+
+    item.addEventListener("mouseup", () => {
+      item.draggable = true;
+    });
+
+    item.addEventListener("dragstart", (e) => {
+      const interactive = e.target.closest(
+        "button, input, select, textarea, a, label, .provider-toggle, .prewarm-action, .switch-toggle"
+      );
+      if (interactive && interactive !== item && item.contains(interactive)) {
+        e.preventDefault();
+        return;
+      }
+
+      activeDragItem = item;
+      activeDragContainer = container;
+      suppressClick = true;
+
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", getId(item) || "");
+      }
+
+      setTimeout(() => {
+        if (activeDragItem === item) {
+          item.classList.add("is-dragging");
+        }
+      }, 0);
+    });
+
+    item.addEventListener("dragenter", () => {
+      if (activeDragItem && activeDragItem !== item && activeDragContainer === container && item.parentElement === container) {
+        item.classList.add("drag-over");
+      }
+    });
+
+    item.addEventListener("dragover", (e) => {
+      if (!activeDragItem || activeDragItem === item || activeDragContainer !== container || item.parentElement !== container) return;
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = "move";
+      }
+      if (!item.classList.contains("drag-over")) {
+        item.classList.add("drag-over");
+      }
+    });
+
+    item.addEventListener("dragleave", (e) => {
+      if (!item.contains(e.relatedTarget)) {
+        item.classList.remove("drag-over");
+      }
+    });
+
+    item.addEventListener("drop", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      item.classList.remove("drag-over");
+
+      if (!activeDragItem || activeDragItem === item || activeDragContainer !== container || item.parentElement !== container) return;
+
+      const currentItems = Array.from(container.querySelectorAll(`:scope > ${itemSelector}`));
+      const fromIndex = currentItems.indexOf(activeDragItem);
+      const toIndex = currentItems.indexOf(item);
+
+      if (fromIndex !== -1 && toIndex !== -1) {
+        if (fromIndex < toIndex) {
+          container.insertBefore(activeDragItem, item.nextSibling);
+        } else {
+          container.insertBefore(activeDragItem, item);
+        }
+        saveOrder();
+      }
+    });
+
+    item.addEventListener("dragend", () => {
+      item.classList.remove("is-dragging");
+      container.querySelectorAll(itemSelector).forEach((el) => el.classList.remove("drag-over"));
+      activeDragItem = null;
+      activeDragContainer = null;
+      setTimeout(() => {
+        suppressClick = false;
+      }, 150);
+    });
+  };
+
+  const bindAll = () => {
+    container.querySelectorAll(`:scope > ${itemSelector}`).forEach(bindItem);
+  };
+
+  // Restore saved order immediately using pure DOM operations (zero dynamic markup)
+  restoreOrder();
+  bindAll();
+
+  container.addEventListener("dragover", (e) => {
+    if (!activeDragItem || activeDragContainer !== container) return;
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "move";
+    }
+  });
+
+  container.addEventListener("drop", (e) => {
+    if (e.target === container && activeDragItem && activeDragContainer === container) {
+      e.preventDefault();
+      const anchor = anchorSelector ? container.querySelector(anchorSelector) : null;
+      if (anchor) {
+        container.insertBefore(activeDragItem, anchor);
+      } else {
+        container.appendChild(activeDragItem);
+      }
+      saveOrder();
+    }
+  });
+
+  return { restoreOrder, saveOrder, bindAll, bindItem };
+}
+
 function bindEvents() {
   // Navigation dock buttons
   document.querySelectorAll(".nav-link").forEach((link) => {
@@ -1542,6 +2340,7 @@ function bindEvents() {
       const target = btn.dataset.launcher;
       if (target === "agents") switchTab("agents");
       else if (target === "obsidian") switchTab("tasks");
+      else if (target === "hub") openIntegrationModal();
       else if (target === "playbooks") switchTab("tasks");
       else if (target === "runs") switchTab("tasks");
       else if (target === "settings") switchTab("settings");
@@ -1550,6 +2349,22 @@ function bindEvents() {
   if ($("launcher-hub-folder")) {
     $("launcher-hub-folder").onclick = () => openIntegrationModal();
   }
+
+  // Setup Drag-and-Drop Reorder (Home squircle launchers + Token view provider cards)
+  setupDragAndDropReorder({
+    containerSelector: ".squircle-grid",
+    itemSelector: ".launcher-card",
+    storageKey: "ip_order_squircles",
+    getId: (el) => el.dataset.launcher,
+  });
+
+  providerDndController = setupDragAndDropReorder({
+    containerSelector: ".token-providers-grid",
+    itemSelector: ".provider-card",
+    storageKey: "ip_order_providers",
+    getId: (el) => el.dataset.provider || el.id,
+    anchorSelector: "#external-providers-host",
+  });
   if ($("btn-close-integration-modal")) $("btn-close-integration-modal").onclick = closeIntegrationModal;
   if ($("btn-dismiss-integration-modal")) $("btn-dismiss-integration-modal").onclick = closeIntegrationModal;
 
@@ -1594,7 +2409,7 @@ function bindEvents() {
       try {
         await api("/v1/hub/ingest", {
           method: "POST",
-          body: JSON.stringify({ title: val, rawText: val, originChannel: "omni-command" }),
+          body: JSON.stringify({ title: val, text: val, rawText: val, originChannel: "omni-command" }),
         });
         input.value = "";
         showToast("새 할 일이 등록되었습니다.");
@@ -1613,7 +2428,7 @@ function bindEvents() {
       try {
         await api("/v1/hub/ingest", {
           method: "POST",
-          body: JSON.stringify({ title: val, rawText: val, originChannel: "tasks-ingest" }),
+          body: JSON.stringify({ title: val, text: val, rawText: val, originChannel: "tasks-ingest" }),
         });
         input.value = "";
         showToast("새 작업이 허브에 등록되었습니다.");
@@ -1775,7 +2590,7 @@ function bindEvents() {
     try {
       await api("/v1/hub/ingest", {
         method: "POST",
-        body: JSON.stringify({ title: title.trim(), rawText: title.trim(), originChannel: "dashboard" }),
+        body: JSON.stringify({ title: title.trim(), text: title.trim(), rawText: title.trim(), originChannel: "dashboard" }),
       });
       await refreshHub({ force: true });
       showToast("새 할 일이 등록되었습니다.");
@@ -1869,23 +2684,31 @@ function bindEvents() {
     showToast("AI 모델 쿼터가 최신 상태로 갱신되었습니다.");
   };
 
-  const syncProviderVisibility = (k, visible) => {
-    providerVisibility[k] = visible;
-    persistProviderVisibility();
-    applyProviderVisibility();
-  };
-  document.querySelectorAll(".provider-toggle[data-provider]").forEach((btn) => {
-    if (btn.classList.contains("provider-toggle-delete")) return;
-    const k = btn.dataset.provider;
-    btn.onclick = () => syncProviderVisibility(k, providerVisibility[k] !== false);
+  document.querySelector(".token-providers-grid")?.addEventListener("click", (e) => {
+    const prewarmBtn = e.target.closest(".prewarm-settings-btn[data-prewarm-target]");
+    if (prewarmBtn) {
+      e.stopPropagation();
+      openPrewarmModal(prewarmBtn.dataset.prewarmTarget);
+      return;
+    }
+    const toggleBtn = e.target.closest(".provider-toggle[data-provider]");
+    if (!toggleBtn || toggleBtn.classList.contains("provider-toggle-delete")) return;
+    const k = toggleBtn.dataset.provider;
+    if (k) toggleProvider(k);
   });
   if ($("provider-visibility-reset")) $("provider-visibility-reset").onclick = () => {
     for (const k of Object.keys(providerVisibility)) providerVisibility[k] = true;
     persistProviderVisibility();
     applyProviderVisibility();
-    showToast("모든 제공자 블록을 표시합니다.");
+    showToast("모든 제공자 블록을 펼쳤습니다.");
   };
   applyProviderVisibility();
+
+  $("btn-close-prewarm-modal")?.addEventListener("click", closePrewarmModal);
+  $("btn-dismiss-prewarm-modal")?.addEventListener("click", closePrewarmModal);
+  $("prewarm-settings-modal")?.addEventListener("click", (e) => {
+    if (e.target === $("prewarm-settings-modal")) closePrewarmModal();
+  });
 
   const syncNotifyToggles = (checked) => {
     const previous = state.notifyOnFullTokens;
@@ -2144,7 +2967,7 @@ function bindEvents() {
 }
 
 const PROVIDER_VIS_KEY = "ip_provider_visibility";
-const PROVIDER_KEYS = ["antigravity", "openai", "claude", "local"];
+const PROVIDER_KEYS = ["antigravity", "antigravity-2", "openai", "claude", "local"];
 const loadProviderVisibility = () => {
   let stored = null;
   try {
@@ -2152,8 +2975,10 @@ const loadProviderVisibility = () => {
   } catch {
     stored = null;
   }
-  const out = {};
-  for (const k of PROVIDER_KEYS) out[k] = stored && typeof stored[k] === "boolean" ? stored[k] : true;
+  const out = typeof stored === "object" && stored !== null ? { ...stored } : {};
+  for (const k of PROVIDER_KEYS) {
+    if (typeof out[k] !== "boolean") out[k] = true;
+  }
   return out;
 };
 const persistProviderVisibility = () => {
@@ -2164,25 +2989,24 @@ const persistProviderVisibility = () => {
   }
 };
 const providerVisibility = loadProviderVisibility();
+const toggleProvider = (k) => {
+  const current = providerVisibility[k] !== false;
+  providerVisibility[k] = !current;
+  persistProviderVisibility();
+  applyProviderVisibility();
+};
 const applyProviderVisibility = () => {
-  for (const k of PROVIDER_KEYS) {
-    const visible = providerVisibility[k] !== false;
-    const card = $(`provider-${k}`);
-    if (card) card.style.display = visible ? "" : "none";
-    const btn = document.querySelector(`.provider-toggle[data-provider="${k}"]`);
-    if (btn) {
-      btn.textContent = visible ? "숨기기" : "보기";
-      btn.classList.toggle("is-off", !visible);
-    }
-  }
-  document.querySelectorAll(".provider-card-external").forEach((card) => {
-    const btn = card.querySelector(".provider-toggle[data-provider]");
-    const key = btn?.dataset.provider;
-    const visible = !key || providerVisibility[key] !== false;
-    card.style.display = visible ? "" : "none";
-    if (btn) {
-      btn.textContent = visible ? "숨기기" : "보기";
-      btn.classList.toggle("is-off", !visible);
+  document.querySelectorAll(".token-providers-grid .provider-card").forEach((card) => {
+    const toggleBtn = card.querySelector(".provider-toggle[data-provider]");
+    const key = card.dataset.provider || toggleBtn?.dataset.provider;
+    if (!key) return;
+    const isExpanded = providerVisibility[key] !== false;
+    card.classList.toggle("is-collapsed", !isExpanded);
+    card.style.display = "";
+    if (toggleBtn) {
+      toggleBtn.textContent = isExpanded ? "접기" : "펼치기";
+      toggleBtn.title = "블록 접기/펼치기";
+      toggleBtn.classList.toggle("is-off", !isExpanded);
     }
   });
 };
@@ -2213,6 +3037,7 @@ const externalCard = (p) => {
   card.className = "card provider-card provider-card-external liquid-card";
   card.id = `provider-external-${p.id}`;
   card.dataset.externalId = p.id;
+  card.dataset.provider = `external-${p.id}`;
   const header = document.createElement("div");
   header.className = "provider-header";
   const pill = document.createElement("span");
@@ -2227,15 +3052,11 @@ const externalCard = (p) => {
   const toggle = document.createElement("button");
   toggle.className = "provider-toggle apple-tactile";
   toggle.dataset.provider = `external-${p.id}`;
-  toggle.title = "이 블록 표시/숨김";
-  toggle.textContent = "숨기기";
-  toggle.onclick = () => {
-    const k = toggle.dataset.provider;
-    const visible = providerVisibility[k] !== false;
-    providerVisibility[k] = !visible;
-    persistProviderVisibility();
-    applyProviderVisibility();
-    toggle.textContent = visible ? "숨기기" : "표시";
+  toggle.title = "블록 접기/펼치기";
+  toggle.textContent = providerVisibility[`external-${p.id}`] !== false ? "접기" : "펼치기";
+  toggle.onclick = (e) => {
+    e.stopPropagation();
+    toggleProvider(`external-${p.id}`);
   };
   const del = document.createElement("button");
   del.className = "provider-toggle provider-toggle-delete apple-tactile";
@@ -2255,20 +3076,29 @@ const externalCard = (p) => {
   models.id = `external-windows-${p.id}`;
   card.append(header, sub, models);
   const host = $("external-providers-host");
-  if (host) host.appendChild(card);
+  const grid = host?.parentElement || document.querySelector(".token-providers-grid");
+  if (host && grid) {
+    grid.insertBefore(card, host);
+  } else if (host) {
+    host.appendChild(card);
+  }
   return card;
 };
 const renderExternalProviders = () => {
   const host = $("external-providers-host");
   if (!host) return;
   for (const p of state.externalProviders) externalCard(p);
-  for (const el of Array.from(host.children)) {
+  for (const el of Array.from(document.querySelectorAll(".provider-card-external"))) {
     const id = el.dataset.externalId;
     const stillRegistered = state.externalProviders.some((p) => p.id === id);
     if (!stillRegistered) el.remove();
   }
   for (const p of state.externalProviders) renderExternalCard(p);
-  applyProviderVisibility(providerVisibility);
+  if (providerDndController) {
+    providerDndController.bindAll();
+    providerDndController.restoreOrder();
+  }
+  applyProviderVisibility();
   const toggleBtn = $("external-providers-toggle");
   if (toggleBtn) toggleBtn.style.display = state.externalProviders.length ? "none" : "";
 };
@@ -2479,6 +3309,11 @@ const deleteExternalProvider = (id) => {
   delete externalDueAt[id];
   persistExternalProviders();
   if (target) showToast(`외부 provider "${target.name}"가 제거되었습니다.`);
+  const card = document.getElementById(`provider-external-${id}`);
+  if (card) card.remove();
+  if (providerDndController) {
+    providerDndController.saveOrder();
+  }
   renderExternalProviders();
 };
 
@@ -2587,32 +3422,76 @@ function getModelPrewarmMode(prefix) {
 function setModelPrewarmMode(prefix, mode) {
   const previous = state.quotaSettings.prewarmModes[prefix];
   state.quotaSettings = { ...state.quotaSettings, prewarmModes: { ...state.quotaSettings.prewarmModes, [prefix]: mode }, prewarmMode: prefix === "antigravity" ? mode : state.quotaSettings.prewarmMode };
-  renderPrewarmToolbar();
+  renderPrewarmToolbar(state.activePrewarmTarget || "all");
   void saveQuotaSettings({ message: `${prefix} 프리웜 모드가 '${mode}'(으)로 설정되었습니다.` }).then((saved) => {
     if (!saved && state.quotaSettings.prewarmModes[prefix] === mode) {
       state.quotaSettings.prewarmModes[prefix] = previous || "click";
-      renderPrewarmToolbar();
+      renderPrewarmToolbar(state.activePrewarmTarget || "all");
     }
   });
 }
 
-function renderPrewarmToolbar() {
-  const el = $("token-prewarm-toolbar");
+function openPrewarmModal(targetKey = "all") {
+  state.activePrewarmTarget = targetKey;
+  const modal = $("prewarm-settings-modal");
+  if (!modal) return;
+  const titleEl = $("prewarm-modal-title");
+  const subEl = $("prewarm-modal-subtitle");
+  if (targetKey === "antigravity") {
+    if (titleEl) titleEl.textContent = "Antigravity IDE 자동 프리웜 설정";
+    if (subEl) subEl.textContent = "Antigravity 기본 계정의 5시간 윈도우 프리웜 모드를 설정합니다.";
+  } else if (targetKey === "antigravity-2") {
+    if (titleEl) titleEl.textContent = "Antigravity 2.0 자동 프리웜 설정";
+    if (subEl) subEl.textContent = "Antigravity 2.0 보조 계정의 5시간 윈도우 프리웜 모드를 설정합니다.";
+  } else if (targetKey === "openai") {
+    if (titleEl) titleEl.textContent = "OpenAI (ChatGPT) 자동 프리웜 설정";
+    if (subEl) subEl.textContent = "OpenAI ChatGPT의 5시간 윈도우 프리웜 모드를 설정합니다.";
+  } else {
+    if (titleEl) titleEl.textContent = "AI 모델 자동 프리웜 설정";
+    if (subEl) subEl.textContent = "5시간 윈도우 100% 충전 시 자동 프리웜 트리거 정책";
+  }
+  renderPrewarmToolbar(targetKey);
+  modal.classList.remove("hidden");
+}
+
+function closePrewarmModal() {
+  const modal = $("prewarm-settings-modal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  state.activePrewarmTarget = "all";
+  renderPrewarmToolbar("all");
+}
+
+function renderPrewarmToolbar(targetKey = state.activePrewarmTarget || "all") {
+  const modalBody = $("prewarm-modal-body");
+  const el = $("token-prewarm-toolbar") || modalBody;
   if (!el) return;
 
   const inner = node("div", undefined, "prewarm-toolbar-inner");
   const titleGroup = node("div", undefined, "prewarm-title-group");
   titleGroup.append(
     node("span", "⚡", "prewarm-icon"),
-    node("span", "5시간 자동 프리웜:", "prewarm-label"),
+    node("span", "5시간 자동 프리웜 설정:", "prewarm-label"),
   );
 
-  const targets = [
+  let targets = [
     { key: "antigravity", label: "Gemini" },
     { key: "argon", label: "Argon 4" },
     { key: "opus", label: "Claude" },
     { key: "codex", label: "ChatGPT" },
   ];
+
+  if (targetKey === "antigravity" || targetKey === "antigravity-2") {
+    targets = [
+      { key: "antigravity", label: "Gemini" },
+      { key: "argon", label: "Argon 4" },
+      { key: "opus", label: "Claude" },
+    ];
+  } else if (targetKey === "openai") {
+    targets = [
+      { key: "codex", label: "ChatGPT" },
+    ];
+  }
 
   const grid = node("div", undefined, "prewarm-targets-grid");
   const modes = [
@@ -2646,23 +3525,58 @@ function renderPrewarmToolbar() {
   el.replaceChildren(inner);
 }
 
-window.triggerPrewarmWindow = async function(windowId) {
+window.triggerPrewarmWindow = async function(windowId, accountEmail) {
   const prefix = prewarmModelByWindow[windowId] || prefixOf[windowId] || windowId;
   if (!prefix) return;
   const windowType = String(windowId).endsWith("-weekly") ? "weekly" : "5h";
-  showToast(`${prefix} ${windowType === "weekly" ? "주간(168시간)" : "5시간"} 윈도우 프리웜 요청 중...`);
+  const targetLabel = `${prefix.toUpperCase()}${accountEmail ? ` (${accountEmail})` : ""} ${windowType === "weekly" ? "주간(168시간)" : "5시간"}`;
+  showToast(`⚡ ${targetLabel} 윈도우 프리웜 요청 중...`);
   try {
+    const bodyObj = {
+      model: prefix,
+      window: windowType,
+      manual: true,
+      idempotencyKey: crypto.randomUUID(),
+      expectedSettingsRevision: state.quotaSettingsRevision,
+    };
+    if (accountEmail) bodyObj.account = accountEmail;
     const res = await api("/v1/tokens/prewarm", {
       method: "POST",
-      body: JSON.stringify({ model: prefix, window: windowType, manual: true, idempotencyKey: crypto.randomUUID(), expectedSettingsRevision: state.quotaSettingsRevision }),
+      body: JSON.stringify(bodyObj),
     });
-    if (res.status === "dispatched") showToast(`${prefix} 프리웜 요청을 브로커에 전달했습니다${res.timerConfirmed ? " (타이머 확인됨)" : " (타이머 시작은 확인되지 않음)"}.`);
-    else if (res.status === "duplicate") showToast(`${prefix} 프리웜 요청은 이미 처리되었습니다.`);
-    else if (res.ok && !res.status) showToast(`${prefix} 구형 브로커가 요청을 접수했습니다. 실행 여부와 타이머 시작은 확인되지 않습니다.`);
-    else showToast(`${prefix} 프리웜 ${res.status === "failed" ? "실패" : "건너뜀"}: ${res.error || "브로커에서 실행하지 않았습니다."}`, res.status === "failed");
+    const acct = res.account || accountEmail;
+    const acctTag = acct ? ` [${acct}]` : "";
+    if (res.status === "dispatched") {
+      state.lastManualPrewarmAt = Date.now();
+      const details = [];
+      if (res.cancelledEarly) details.push("즉시 취소(쿼터 보존)");
+      if (typeof res.durationMs === "number") details.push(`${res.durationMs}ms`);
+      if (acct) details.push(acct);
+      const detailStr = details.length ? ` (${details.join(" · ")})` : " (로그 탭에서 실행 기록 확인 가능)";
+      showToast(`⚡ ${prefix.toUpperCase()} 프리웜이 백그라운드에서 실행되었습니다.${detailStr}`);
+      setTimeout(() => void refresh(), 5500);
+      setTimeout(() => void refresh(), 18000);
+    } else if (res.status === "skipped") {
+      state.lastManualPrewarmAt = Date.now();
+      showToast(`ℹ️ ${prefix.toUpperCase()}${acctTag} 프리웜 건너뜀: ${res.error || res.message || "실행 조건 미충족"}`);
+    } else if (res.status === "duplicate") {
+      state.lastManualPrewarmAt = Date.now();
+      showToast(`⚡ ${prefix.toUpperCase()}${acctTag} 프리웜은 최근에 이미 실행되었습니다.`);
+    } else if (res.status === "failed") {
+      state.lastManualPrewarmAt = Date.now();
+      showToast(`⚠️ ${prefix.toUpperCase()}${acctTag} 프리웜 실패: ${res.error || res.message || "브로커 실행 실패"}`, true);
+    } else if (res.ok && !res.status) {
+      state.lastManualPrewarmAt = Date.now();
+      showToast(`${prefix}${acctTag} 구형 브로커가 요청을 접수했습니다. 실행 여부와 타이머 시작은 확인되지 않습니다.`);
+    } else {
+      state.lastManualPrewarmAt = Date.now();
+      const isFail = !res.ok;
+      showToast(`⚠️ ${prefix.toUpperCase()}${acctTag} 프리웜 ${isFail ? "실패" : "건너뜀"}: ${res.error || res.message || "브로커에서 실행하지 않았습니다."}`, isFail);
+    }
     void refresh();
   } catch (err) {
-    showToast(`${prefix} 프리웜 요청 실패: ${err.message}`, true);
+    const acctTag = accountEmail ? ` [${accountEmail}]` : "";
+    showToast(`⚠️ ${prefix.toUpperCase()}${acctTag} 프리웜 요청 실패: ${err.message}`, true);
   }
 };
 

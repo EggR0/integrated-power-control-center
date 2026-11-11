@@ -31,29 +31,72 @@ namespace AgyCredWriter {
             public string UserName;
         }
 
+        [DllImport("Advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern bool CredRead(string target, UInt32 type, UInt32 reservedFlag, out IntPtr credentialPtr);
+
         [DllImport("Advapi32.dll", EntryPoint = "CredWriteW", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern bool CredWrite(ref Credential credential, UInt32 flags);
+
+        [DllImport("Advapi32.dll", SetLastError = true)]
+        public static extern void CredFree(IntPtr buffer);
     }
 }
 '@
 }
 
+$existingPayload = $null
+$readPtr = [IntPtr]::Zero
+if ([AgyCredWriter.NativeMethods]::CredRead($Target, 1, 0, [ref]$readPtr)) {
+    try {
+        $existingCred = [Runtime.InteropServices.Marshal]::PtrToStructure($readPtr, [type][AgyCredWriter.NativeMethods+Credential])
+        $existingBytes = New-Object byte[] $existingCred.CredentialBlobSize
+        [Runtime.InteropServices.Marshal]::Copy($existingCred.CredentialBlob, $existingBytes, 0, $existingBytes.Length)
+        try {
+            $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
+            $existingVal = $utf8.GetString($existingBytes)
+        } catch {
+            $existingVal = [Text.Encoding]::Unicode.GetString($existingBytes)
+        }
+        $existingPayload = $existingVal | ConvertFrom-Json
+    } catch {
+        $existingPayload = $null
+    } finally {
+        [AgyCredWriter.NativeMethods]::CredFree($readPtr)
+    }
+}
+
 $expiryIso = (Get-Date).ToUniversalTime().AddSeconds($ExpiresIn).ToString("yyyy-MM-ddTHH:mm:ssZ")
-$tokenObj = @{
+$tokenObj = [ordered]@{
     access_token = $AccessToken
-    refresh_token = $RefreshToken
     token_type = "Bearer"
-    expires_in = $ExpiresIn
+    refresh_token = $RefreshToken
     expiry = $expiryIso
+    expires_in = $ExpiresIn
 }
 
-$payloadObj = @{
+$resolvedAuthMethod = $AuthMethod
+if ($existingPayload -and $existingPayload.auth_method) {
+    $resolvedAuthMethod = [string]$existingPayload.auth_method
+}
+$resolvedEmail = $Email
+if (-not $resolvedEmail -and $existingPayload -and $existingPayload.id_token_email) {
+    $resolvedEmail = [string]$existingPayload.id_token_email
+}
+
+$payloadObj = [ordered]@{
     token = $tokenObj
-    auth_method = $AuthMethod
-    id_token_email = $Email
+    auth_method = $resolvedAuthMethod
+    id_token_email = $resolvedEmail
+}
+if ($existingPayload) {
+    foreach ($prop in $existingPayload.PSObject.Properties) {
+        if ($prop.Name -notin @('token', 'auth_method', 'id_token_email') -and $null -ne $prop.Value) {
+            $payloadObj[$prop.Name] = $prop.Value
+        }
+    }
 }
 
-$json = $payloadObj | ConvertTo-Json -Compress
+$json = $payloadObj | ConvertTo-Json -Compress -Depth 6
 $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
 $blobPtr = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($bytes.Length)
 

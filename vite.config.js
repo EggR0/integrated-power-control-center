@@ -14,4 +14,13 @@ export default defineConfig({
       "@shared/hub": path.resolve(sharedHubSource),
     },
   },
+  server: {
+    watch: {
+      ignored: [
+        "**/src-tauri/target/**",
+        "**/dist/**",
+        "**/broker-out/**",
+      ],
+    },
+  },
 });
